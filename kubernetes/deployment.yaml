@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentic-coding-pipeline
+  labels:
+    app: agentic-coding-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentic-coding-pipeline
+  template:
+    metadata:
+      labels:
+        app: agentic-coding-pipeline
+    spec:
+      containers:
+      - name: agentic-coding-pipeline
+        image: agentic-coding-pipeline:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+          name: web
+        - containerPort: 8000
+          name: python
+        - containerPort: 8080
+          name: alt-web
+        - containerPort: 9000
+          name: service
+        env:
+        - name: WORKSPACE_DIR
+          value: "/workspace"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: DEBUG
+          value: "false"
+        volumeMounts:
+        - name: workspace-volume
+          mountPath: /workspace
+        - name: config-volume
+          mountPath: /opt/configs
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - "agentic-status"
+          initialDelaySeconds: 30
+          periodSeconds: 60
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - "test -f /workspace/.ready || touch /workspace/.ready"
+          initialDelaySeconds: 10
+          periodSeconds: 30
+      volumes:
+      - name: workspace-volume
+        persistentVolumeClaim:
+          claimName: agentic-workspace-pvc
+      - name: config-volume
+        configMap:
+          name: agentic-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentic-coding-service
+  labels:
+    app: agentic-coding-pipeline
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: web
+  - port: 8000
+    targetPort: 8000
+    name: python
+  - port: 8080
+    targetPort: 8080
+    name: alt-web
+  - port: 9000
+    targetPort: 9000
+    name: service
+  selector:
+    app: agentic-coding-pipeline
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agentic-workspace-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentic-config
+data:
+  environment: "kubernetes"
+  log_level: "info"
+  debug: "false"

@@ -1,0 +1,55 @@
+# Local development override for Docker Compose
+# This file extends the main docker-compose.yml for local development
+
+version: '3.8'
+
+services:
+  agentic-coding-pipeline:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    image: agentic-coding-pipeline:${IMAGE_TAG:-latest}
+    container_name: agentic-coding-container-local
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=debug
+      - ENVIRONMENT=local
+    volumes:
+      # Mount local workspace for development
+      - ../../workspace:/workspace
+      # Mount source code for development (optional)
+      - ../../:/host-project:ro
+    ports:
+      # Expose all ports for local development
+      - "3000:3000"
+      - "8000:8000"
+      - "8080:8080"
+      - "9000:9000"
+      # Additional development ports
+      - "5000:5000"   # Flask dev server
+      - "3001:3001"   # React dev server
+      - "8888:8888"   # Jupyter notebook
+    networks:
+      - agentic-local
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "agentic-status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  agentic-local:
+    driver: bridge
+    name: agentic-local-network
+
+volumes:
+  workspace-local:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../../workspace

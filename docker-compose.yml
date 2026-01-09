@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  agentic-coding-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentic-coding-pipeline:latest
+    container_name: agentic-coding-container
+    
+    # Enable Docker-in-Docker
+    privileged: true
+    
+    # Port mappings for development services
+    ports:
+      - "3000:3000"   # General web development
+      - "8000:8000"   # Python/Django development
+      - "8080:8080"   # Alternative web port
+      - "9000:9000"   # Additional service port
+    
+    # Volume mounts for persistent development work
+    volumes:
+      - ./workspace:/workspace
+      - ./configs:/opt/configs
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for DinD
+      - agentic-data:/home/developer
+    
+    # Environment variables
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - WORKSPACE_DIR=/workspace
+      - PIPELINES_DIR=/opt/pipelines
+      - TOOLS_DIR=/opt/tools
+      - CONFIGS_DIR=/opt/configs
+    
+    # Working directory
+    working_dir: /workspace
+    
+    # Keep container running
+    tty: true
+    stdin_open: true
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+
+# Named volumes for data persistence
+volumes:
+  agentic-data:
+    driver: local
+
+# Network configuration
+networks:
+  default:
+    name: agentic-network
+    driver: bridge

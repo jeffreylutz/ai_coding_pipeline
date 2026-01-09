@@ -1,0 +1,251 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run nightly builds at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  IMAGE_NAME: agentic-coding-pipeline
+  REGISTRY: ghcr.io
+  
+jobs:
+  lint-and-validate:
+    name: Lint and Validate
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Validate Dockerfile
+      run: |
+        # Install hadolint for Dockerfile linting
+        wget -O hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+        chmod +x hadolint
+        ./hadolint Dockerfile
+        
+    - name: Validate docker-compose
+      run: |
+        docker-compose config --quiet
+        
+    - name: Validate Kubernetes manifests
+      run: |
+        # Install kubeval for Kubernetes manifest validation
+        wget -O kubeval.tar.gz https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+        tar xf kubeval.tar.gz
+        chmod +x kubeval
+        ./kubeval kubernetes/deployment.yaml
+        
+    - name: Lint shell scripts
+      run: |
+        # Install shellcheck
+        sudo apt-get update && sudo apt-get install -y shellcheck
+        find . -name "*.sh" -exec shellcheck {} \;
+
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    needs: lint-and-validate
+    strategy:
+      matrix:
+        docker-version: ['20.10', '24.0', 'latest']
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker
+      uses: docker/setup-buildx-action@v3
+      with:
+        version: ${{ matrix.docker-version }}
+        
+    - name: Cache Docker layers
+      uses: actions/cache@v3
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+          
+    - name: Build Docker image
+      run: |
+        DOCKER_BUILDKIT=1 docker build \
+          --cache-from=type=local,src=/tmp/.buildx-cache \
+          --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
+          --tag ${{ env.IMAGE_NAME }}:test \
+          --file Dockerfile \
+          .
+          
+    - name: Move cache
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+        
+    - name: Set up Python for tests
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Install test dependencies
+      run: |
+        pip install -r tests/requirements.txt
+        
+    - name: Run property-based tests
+      run: |
+        cd tests
+        python -m pytest \
+          test_base_container.py \
+          test_runtime_environment.py \
+          test_kiro_installation.py \
+          test_pipeline_projects.py \
+          test_additional_tools.py \
+          test_container_startup.py \
+          test_build_optimization.py \
+          test_documentation.py \
+          test_orchestration.py \
+          -v \
+          --tb=short \
+          --maxfail=5 \
+          --timeout=600 \
+          --junitxml=../test-results.xml
+          
+    - name: Run integration tests
+      run: |
+        export IMAGE_NAME="${{ env.IMAGE_NAME }}:test"
+        ./test.sh integration
+        
+    - name: Run performance tests
+      run: |
+        export IMAGE_NAME="${{ env.IMAGE_NAME }}:test"
+        ./test.sh performance
+        
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.docker-version }}
+        path: |
+          test-results.xml
+          test-report-*.txt
+          
+    - name: Check image size
+      run: |
+        IMAGE_SIZE=$(docker image inspect ${{ env.IMAGE_NAME }}:test --format "{{.Size}}")
+        IMAGE_SIZE_GB=$((IMAGE_SIZE / 1024 / 1024 / 1024))
+        echo "Image size: ${IMAGE_SIZE_GB}GB"
+        if [ $IMAGE_SIZE_GB -gt 8 ]; then
+          echo "::warning::Image size exceeds 8GB recommendation"
+        fi
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Build image for scanning
+      run: |
+        docker build -t ${{ env.IMAGE_NAME }}:scan .
+        
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ env.IMAGE_NAME }}:scan'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  build-and-push:
+    name: Build and Push
+    runs-on: ubuntu-latest
+    needs: [build-and-test, security-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: staging
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Deploy to staging
+      run: |
+        echo "Deploying to staging environment..."
+        # This would typically deploy to a staging Kubernetes cluster
+        # For now, we'll just validate the deployment configuration
+        ./scripts/deploy.sh staging validate
+        
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Deploy to production
+      run: |
+        echo "Deploying to production environment..."
+        # This would typically deploy to a production Kubernetes cluster
+        # For now, we'll just validate the deployment configuration
+        ./scripts/deploy.sh production validate
+
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    needs: [build-and-test, security-scan]
+    if: always()
+    steps:
+    - name: Clean up Docker images
+      run: |
+        docker system prune -af --volumes || true

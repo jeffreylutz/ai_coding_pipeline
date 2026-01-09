@@ -1,0 +1,93 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: agentic-coding-pipeline-staging
+
+# Base resources
+resources:
+  - ../../kubernetes/deployment.yaml
+
+# Namespace for staging
+namespace: staging
+
+# Name prefix for all resources
+namePrefix: staging-
+
+# Common labels for all resources
+commonLabels:
+  environment: staging
+  version: v1.0.0
+
+# Images to use (will be overridden by deployment script)
+images:
+  - name: agentic-coding-pipeline
+    newTag: staging
+
+# Patches for staging environment
+patches:
+  # Reduce resource requirements for staging
+  - target:
+      kind: Deployment
+      name: agentic-coding-pipeline
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "4Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "2000m"
+      
+  # Add staging-specific environment variables
+  - target:
+      kind: Deployment
+      name: agentic-coding-pipeline
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ENVIRONMENT
+          value: "staging"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: DEBUG
+          value: "true"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LOG_LEVEL
+          value: "debug"
+
+  # Reduce PVC size for staging
+  - target:
+      kind: PersistentVolumeClaim
+      name: agentic-workspace-pvc
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: "10Gi"
+
+# ConfigMap generator for staging-specific config
+configMapGenerator:
+  - name: agentic-config-staging
+    literals:
+      - environment=staging
+      - log_level=debug
+      - debug=true
+      - max_pipeline_projects=5
+      - enable_experimental_features=true
+
+# Secret generator for staging API keys (will be created separately)
+secretGenerator:
+  - name: agentic-secrets-staging
+    literals:
+      - anthropic_api_key=placeholder
+      - openai_api_key=placeholder
+      - google_api_key=placeholder

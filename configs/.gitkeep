@@ -1,0 +1,2 @@
+# This file ensures the configs directory is tracked by Git
+# The configs directory will contain configuration files for pipeline projects
