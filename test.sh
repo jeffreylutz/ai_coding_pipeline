@@ -65,10 +65,19 @@ run_build_tests() {
     # Test Dockerfile syntax
     if [ -f "Dockerfile" ]; then
         print_status "Validating Dockerfile syntax..."
-        docker build --dry-run . > /dev/null 2>&1 || {
-            print_error "Dockerfile syntax validation failed"
-            return 1
-        }
+        # Use docker buildx to validate syntax without building
+        if command -v docker-buildx &> /dev/null; then
+            docker buildx build --dry-run . > /dev/null 2>&1 || {
+                print_error "Dockerfile syntax validation failed"
+                return 1
+            }
+        else
+            # Fallback: just check if Dockerfile can be parsed
+            docker build --no-cache --target base . > /dev/null 2>&1 || {
+                print_error "Dockerfile syntax validation failed"
+                return 1
+            }
+        fi
         print_success "Dockerfile syntax is valid"
     else
         print_error "Dockerfile not found"

@@ -1,5 +1,6 @@
 # Testing dependencies for Docker container validation
 pytest>=7.0.0
+pytest-timeout>=2.1.0
 hypothesis>=6.0.0
 docker>=6.0.0
 pyyaml>=6.0

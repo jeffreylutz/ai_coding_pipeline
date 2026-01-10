@@ -1,0 +1,19 @@
+{
+  "notifications": {
+    "enableSound": true,
+    "soundSettings": {
+      "taskComplete": {
+        "enabled": true,
+        "sound": "success"
+      },
+      "taskError": {
+        "enabled": true,
+        "sound": "alert"
+      },
+      "agentComplete": {
+        "enabled": true,
+        "sound": "notification"
+      }
+    }
+  }
+}

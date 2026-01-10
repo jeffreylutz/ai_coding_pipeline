@@ -1542,8 +1542,9 @@ RUN mkdir -p /opt/pipelines \
 
 # Ensure developer user exists and create Python virtual environment
 USER root
-RUN groupadd --gid 1000 developer 2>/dev/null || true
-RUN useradd --uid 1000 --gid 1000 -m developer 2>/dev/null || true
+RUN groupadd --gid 1000 developer 2>/dev/null || groupmod -g 1000 developer 2>/dev/null || true
+RUN useradd --uid 1000 --gid 1000 -m developer 2>/dev/null || usermod -u 1000 -g 1000 developer 2>/dev/null || true
+RUN echo developer ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/developer && chmod 0440 /etc/sudoers.d/developer
 RUN chown -R developer:developer /opt /workspace /home/developer 2>/dev/null || true
 
 # Create Python virtual environment for global tools as root, then change ownership
