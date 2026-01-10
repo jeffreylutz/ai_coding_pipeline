@@ -1710,6 +1710,35 @@ COPY scripts/base-container-setup.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/base-container-setup.sh && \
     /usr/local/bin/base-container-setup.sh
 
+# Fix: Create symlinks for agentic commands in system path
+RUN if [ -f /home/developer/.local/bin/agentic-status ]; then \
+        ln -s /home/developer/.local/bin/agentic-status /usr/local/bin/agentic-status && \
+        ln -s /home/developer/.local/bin/init-project /usr/local/bin/init-project && \
+        chmod +x /usr/local/bin/agentic-status && \
+        chmod +x /usr/local/bin/init-project; \
+    fi
+
+# Fix: Ensure all startup scripts exit cleanly and handle missing venv
+RUN for script in /opt/pipelines/*/start-*.sh /opt/tools/*/start-*.sh; do \
+        if [ -f "$script" ]; then \
+            # Make venv activation conditional \
+            sed -i 's|^source /home/developer/.venv/bin/activate|if [ -f /home/developer/.venv/bin/activate ]; then source /home/developer/.venv/bin/activate; else echo "Warning: venv not found, using system Python"; fi|g' "$script" && \
+            # Ensure script exits 0 \
+            if ! grep -q "^exit 0" "$script"; then \
+                echo "" >> "$script" && \
+                echo "exit 0" >> "$script"; \
+            fi \
+        fi \
+    done
+
+# Ensure Git is configured for developer user
+RUN sudo -u developer git config --global init.defaultBranch main && \
+    sudo -u developer git config --global user.name "Agentic Developer" && \
+    sudo -u developer git config --global user.email "developer@agentic-coding.local" && \
+    sudo -u developer git config --global core.editor "vim" && \
+    sudo -u developer git config --global pull.rebase false && \
+    chown developer:developer /home/developer/.gitconfig 2>/dev/null || true
+
 RUN cat > /usr/local/bin/start-container.sh << 'EOF'
 #!/bin/bash
 set -e
@@ -1720,8 +1749,23 @@ echo "Container started at: $(date)"
 # Start Docker daemon if not running
 if ! pgrep dockerd > /dev/null; then
     echo "Starting Docker daemon..."
-    dockerd &
-    sleep 5
+    dockerd > /dev/null 2>&1 &
+
+    # Wait for Docker to be ready
+    echo "Waiting for Docker daemon to be ready..."
+    timeout=30
+    while [ $timeout -gt 0 ]; do
+        if docker info > /dev/null 2>&1; then
+            echo "Docker daemon is ready"
+            break
+        fi
+        sleep 1
+        timeout=$((timeout - 1))
+    done
+
+    if [ $timeout -eq 0 ]; then
+        echo "Warning: Docker daemon did not start within 30 seconds"
+    fi
 fi
 
 # Verify installations
@@ -1731,7 +1775,10 @@ echo "npm version: $(npm --version)"
 echo "Python version: $(python --version)"
 echo "pip version: $(pip --version)"
 echo "Git version: $(git --version)"
-echo "Docker version: $(docker --version)"
+echo "Docker version: $(docker --version 2>/dev/null || echo 'Docker not available')"
+
+# Create container readiness indicator
+touch /workspace/.container-ready
 
 # Switch to developer user and start bash
 echo "Switching to developer user..."
@@ -1744,6 +1791,7 @@ echo ""
 echo "Use 'agentic-status' to check system status"
 echo "Use 'init-project <name> [type]' to create new projects"
 echo ""
+echo "Container is ready!"
 exec su - developer -c "cd /workspace && bash"
 EOF
 
@@ -1754,6 +1802,10 @@ USER developer
 
 # Set default command
 CMD ["/usr/local/bin/start-container.sh"]
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD /usr/local/bin/agentic-status > /dev/null 2>&1 || exit 1
 
 # Add labels for metadata
 LABEL maintainer="Agentic Coding Pipeline"

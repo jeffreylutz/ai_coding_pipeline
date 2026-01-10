@@ -152,6 +152,9 @@ main() {
     echo ""
     
     show_usage
+
+    # Restart
+    ./run.sh
 }
 
 # Run main function

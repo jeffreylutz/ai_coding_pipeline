@@ -14,14 +14,32 @@ mkdir -p /home/developer/.config
 mkdir -p /home/developer/.local/bin
 
 # Configure Git with enhanced settings for agentic development
-git config --global init.defaultBranch main
-git config --global user.name "Agentic Developer"
-git config --global user.email "developer@agentic-coding.local"
-git config --global core.editor "vim"
-git config --global pull.rebase false
-git config --global push.default simple
-git config --global core.autocrlf input
-git config --global color.ui auto
+# Set for developer user by directly writing to their gitconfig file
+if [ -d "/home/developer" ]; then
+    # Configure as developer user by setting HOME and running as developer
+    export HOME=/home/developer
+    sudo -u developer git config --global init.defaultBranch main
+    sudo -u developer git config --global user.name "Agentic Developer"
+    sudo -u developer git config --global user.email "developer@agentic-coding.local"
+    sudo -u developer git config --global core.editor "vim"
+    sudo -u developer git config --global pull.rebase false
+    sudo -u developer git config --global push.default simple
+    sudo -u developer git config --global core.autocrlf input
+    sudo -u developer git config --global color.ui auto
+
+    # Ensure proper ownership
+    chown developer:developer /home/developer/.gitconfig 2>/dev/null || true
+else
+    # Fallback: configure for current user
+    git config --global init.defaultBranch main
+    git config --global user.name "Agentic Developer"
+    git config --global user.email "developer@agentic-coding.local"
+    git config --global core.editor "vim"
+    git config --global pull.rebase false
+    git config --global push.default simple
+    git config --global core.autocrlf input
+    git config --global color.ui auto
+fi
 
 # Configure SSH for development
 mkdir -p /home/developer/.ssh
