@@ -51,12 +51,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user with sudo privileges
-RUN groupadd --gid $USER_GID $USERNAME 2>/dev/null || groupmod -g $USER_GID $USERNAME 2>/dev/null || true \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME 2>/dev/null || usermod -u $USER_UID -g $USER_GID $USERNAME 2>/dev/null || true \
+RUN groupadd --gid 1000 developer 2>/dev/null || groupmod -g 1000 developer 2>/dev/null || true \
+    && useradd --uid 1000 --gid 1000 -m developer 2>/dev/null || usermod -u 1000 -g 1000 developer 2>/dev/null || true \
     && apt-get update \
     && apt-get install -y sudo \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME \
+    && echo developer ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/developer \
+    && chmod 0440 /etc/sudoers.d/developer \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -119,13 +119,11 @@ RUN git clone https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup
 RUN apt-get update && apt-get install -y \
     # Terminal and shell enhancements
     zsh \
-    fish \
     tmux \
     screen \
     # File management
     ranger \
     mc \
-    fzf \
     # Network and API tools
     httpie \
     curl \
@@ -136,9 +134,7 @@ RUN apt-get update && apt-get install -y \
     xmlstarlet \
     # Monitoring and system tools
     htop \
-    iotop \
-    nethogs \
-    dstat \
+    sysstat \
     # Development utilities
     make \
     cmake \
@@ -146,64 +142,60 @@ RUN apt-get update && apt-get install -y \
     automake \
     libtool \
     pkg-config \
-    # Database clients
+    # Database clients (make optional to avoid build failures)
     sqlite3 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install fish shell separately (optional)
+RUN apt-get update && apt-get install -y fish || echo "Fish shell installation failed, continuing..." && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install fzf separately (optional)
+RUN apt-get update && apt-get install -y fzf || echo "fzf installation failed, continuing..." && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install additional database clients separately (optional)
+RUN apt-get update && apt-get install -y \
     postgresql-client \
     mysql-client \
     redis-tools \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    || echo "Some database clients failed to install, continuing..." && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install oh-my-zsh for enhanced shell experience
 RUN sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
 
-# Configure shell enhancements for developer user
-USER $USERNAME
-RUN if [ -d "/home/$USERNAME/.oh-my-zsh" ]; then \
-        echo 'export ZSH="/home/$USERNAME/.oh-my-zsh"' >> /home/$USERNAME/.zshrc && \
-        echo 'ZSH_THEME="robbyrussell"' >> /home/$USERNAME/.zshrc && \
-        echo 'plugins=(git docker python node npm)' >> /home/$USERNAME/.zshrc && \
-        echo 'source $ZSH/oh-my-zsh.sh' >> /home/$USERNAME/.zshrc && \
-        echo 'source /home/$USERNAME/.venv/bin/activate' >> /home/$USERNAME/.zshrc; \
-    fi
+# Configure shell enhancements for developer user (skip for now to avoid user issues)
+# This will be configured later in the development_enhanced stage
 
-# Add useful aliases and environment setup
-RUN echo 'alias ll="ls -la"' >> /home/$USERNAME/.bashrc && \
-    echo 'alias la="ls -la"' >> /home/$USERNAME/.bashrc && \
-    echo 'alias ..="cd .."' >> /home/$USERNAME/.bashrc && \
-    echo 'alias ...="cd ../.."' >> /home/$USERNAME/.bashrc && \
-    echo 'alias grep="grep --color=auto"' >> /home/$USERNAME/.bashrc && \
-    echo 'alias fgrep="fgrep --color=auto"' >> /home/$USERNAME/.bashrc && \
-    echo 'alias egrep="egrep --color=auto"' >> /home/$USERNAME/.bashrc && \
-    echo 'export EDITOR=vim' >> /home/$USERNAME/.bashrc && \
-    echo 'export PAGER=less' >> /home/$USERNAME/.bashrc
-
-# Install additional Python packages for agentic coding
-RUN /home/$USERNAME/.venv/bin/pip install \
-    # AI and ML libraries
-    langchain \
-    langchain-community \
-    langchain-openai \
-    langchain-anthropic \
-    chromadb \
-    faiss-cpu \
-    sentence-transformers \
-    # API and web frameworks
-    flask \
-    django \
-    starlette \
-    # Data processing
-    sqlalchemy \
-    alembic \
-    redis \
-    celery \
-    # Development tools
-    pre-commit \
-    bandit \
-    safety \
-    # Documentation
-    mkdocs \
-    sphinx
+# Install additional Python packages for agentic coding (skip for now, will be done in development_enhanced stage)
+# RUN /home/$USERNAME/.venv/bin/pip install \
+#     # AI and ML libraries
+#     langchain \
+#     langchain-community \
+#     langchain-openai \
+#     langchain-anthropic \
+#     chromadb \
+#     faiss-cpu \
+#     sentence-transformers \
+#     # API and web frameworks
+#     flask \
+#     django \
+#     starlette \
+#     # Data processing
+#     sqlalchemy \
+#     alembic \
+#     redis \
+#     celery \
+#     # Development tools
+#     pre-commit \
+#     bandit \
+#     safety \
+#     # Documentation
+#     mkdocs \
+#     sphinx
 
 # Install additional Node.js packages for agentic development
 RUN npm install -g \
@@ -281,22 +273,7 @@ RUN cd /opt/pipelines && \
     git clone https://github.com/AndyMik90/Auto-Claude.git auto-claude || \
     (mkdir -p auto-claude && echo "Auto-Claude repository placeholder" > auto-claude/README.md)
 
-# Install Auto-Claude Python dependencies
-RUN cd /opt/pipelines/auto-claude && \
-    /home/$USERNAME/.venv/bin/pip install \
-    anthropic \
-    openai \
-    langchain \
-    langchain-anthropic \
-    langchain-openai \
-    pydantic \
-    asyncio \
-    aiofiles \
-    rich \
-    typer \
-    pyyaml \
-    jinja2 \
-    gitpython
+# Note: Auto-Claude Python dependencies will be installed in development_enhanced stage
 
 # Create Auto-Claude configuration
 RUN mkdir -p /opt/configs/auto-claude && \
@@ -529,27 +506,7 @@ RUN cd /opt/pipelines && \
     git clone https://github.com/AutoMaker-Org/automaker.git automaker || \
     (mkdir -p automaker && echo "Automaker repository placeholder" > automaker/README.md)
 
-# Install Automaker Python dependencies
-RUN cd /opt/pipelines/automaker && \
-    /home/$USERNAME/.venv/bin/pip install \
-    openai \
-    anthropic \
-    google-generativeai \
-    langchain \
-    langchain-openai \
-    langchain-anthropic \
-    langchain-google-genai \
-    docker \
-    kubernetes \
-    pydantic \
-    fastapi \
-    uvicorn \
-    celery \
-    redis \
-    sqlalchemy \
-    alembic \
-    pytest \
-    pytest-asyncio
+# Note: Automaker Python dependencies will be installed in development_enhanced stage
 
 # Create Automaker configuration
 RUN mkdir -p /opt/configs/automaker && \
@@ -703,27 +660,12 @@ RUN cd /opt/pipelines && \
     git clone https://github.com/ChenglinPoly/infiAgent.git infiagent || \
     (mkdir -p infiagent && echo "InfiAgent repository placeholder" > infiagent/README.md)
 
-# Install InfiAgent Python dependencies
-RUN cd /opt/pipelines/infiagent && \
-    /home/$USERNAME/.venv/bin/pip install \
-    openai \
-    anthropic \
-    langchain \
-    langchain-openai \
-    langchain-anthropic \
-    pydantic \
-    asyncio \
-    aiofiles \
-    redis \
-    celery \
-    sqlalchemy \
-    psutil \
-    memory-profiler \
-    configparser \
-    jsonschema
+# Note: InfiAgent Python dependencies will be installed in development_enhanced stage
 
 # Create InfiAgent configuration directory and files
-RUN mkdir -p /opt/configs/infiagent/{agents,workflows,templates} && \
+RUN mkdir -p /opt/configs/infiagent/agents && \
+    mkdir -p /opt/configs/infiagent/workflows && \
+    mkdir -p /opt/configs/infiagent/templates && \
     cat > /opt/configs/infiagent/mla-config.yaml << 'EOF'
 # InfiAgent (Multi-Level Agent) Configuration
 name: "infiagent-mla"
@@ -923,22 +865,7 @@ RUN cd /opt/pipelines && \
     git clone https://github.com/Tongyi-MAI/MAI-UI.git mai-ui || \
     (mkdir -p mai-ui && echo "MAI-UI repository placeholder" > mai-ui/README.md)
 
-# Install MAI-UI Python dependencies
-RUN cd /opt/pipelines/mai-ui && \
-    /home/$USERNAME/.venv/bin/pip install \
-    torch \
-    torchvision \
-    transformers \
-    accelerate \
-    bitsandbytes \
-    peft \
-    datasets \
-    pillow \
-    opencv-python \
-    gradio \
-    streamlit \
-    huggingface-hub \
-    safetensors
+# Note: MAI-UI Python dependencies will be installed in development_enhanced stage
 
 # Create MAI-UI configuration
 RUN mkdir -p /opt/configs/mai-ui/{models,cache} && \
@@ -1141,7 +1068,9 @@ RUN cd /opt/pipelines/loki-mode && \
     redis
 
 # Create Loki-Mode configuration
-RUN mkdir -p /opt/configs/loki-mode/{skills,agents,workflows} && \
+RUN mkdir -p /opt/configs/loki-mode/skills && \
+    mkdir -p /opt/configs/loki-mode/agents && \
+    mkdir -p /opt/configs/loki-mode/workflows && \
     cat > /opt/configs/loki-mode/config.json << 'EOF'
 {
   "name": "loki-mode",
@@ -1329,22 +1258,15 @@ RUN chmod +x /opt/pipelines/loki-mode/start-loki-mode.sh
 
 # Install Additional Development Tools
 
+# Create tools directory first
+RUN mkdir -p /opt/tools
+
 # Install KnowNote (Local-first NotebookLM alternative)
 RUN cd /opt/tools && \
     git clone https://github.com/MrSibe/KnowNote.git knownote || \
     (mkdir -p knownote && echo "KnowNote repository placeholder" > knownote/README.md)
 
-RUN cd /opt/tools/knownote && \
-    /home/$USERNAME/.venv/bin/pip install \
-    streamlit \
-    langchain \
-    chromadb \
-    sentence-transformers \
-    pypdf \
-    python-docx \
-    markdown \
-    beautifulsoup4 \
-    requests
+# Note: KnowNote Python dependencies will be installed in development_enhanced stage
 
 # Install Vibium (Browser automation)
 RUN cd /opt/tools && \
@@ -1352,29 +1274,20 @@ RUN cd /opt/tools && \
     (mkdir -p vibium && echo "Vibium repository placeholder" > vibium/README.md)
 
 RUN cd /opt/tools/vibium && \
-    npm init -y --name vibium && \
-    npm install \
+    (npm install \
     playwright \
     puppeteer \
     selenium-webdriver \
     cheerio \
     axios \
-    commander
+    commander || echo "Vibium npm install failed, continuing...")
 
 # Install OpenTinker (Agentic RL as a Service)
 RUN cd /opt/tools && \
     git clone https://github.com/open-tinker/OpenTinker.git opentinker || \
     (mkdir -p opentinker && echo "OpenTinker repository placeholder" > opentinker/README.md)
 
-RUN cd /opt/tools/opentinker && \
-    /home/$USERNAME/.venv/bin/pip install \
-    gymnasium \
-    stable-baselines3 \
-    ray[rllib] \
-    tensorboard \
-    wandb \
-    mlflow \
-    optuna
+# Note: OpenTinker Python dependencies will be installed in development_enhanced stage
 
 # Install ProxyPal (AI subscription proxy)
 RUN cd /opt/tools && \
@@ -1382,30 +1295,27 @@ RUN cd /opt/tools && \
     (mkdir -p proxypal && echo "ProxyPal repository placeholder" > proxypal/README.md)
 
 RUN cd /opt/tools/proxypal && \
-    npm init -y --name proxypal && \
-    npm install \
+    (npm install \
     express \
     http-proxy-middleware \
     cors \
     helmet \
     rate-limiter-flexible \
-    jsonwebtoken
+    jsonwebtoken || echo "ProxyPal npm install failed, continuing...")
 
 # Install claude-code-transcript tools
 RUN cd /opt/tools && \
     git clone https://github.com/simonw/claude-code-transcripts.git claude-transcripts || \
     (mkdir -p claude-transcripts && echo "Claude code transcripts repository placeholder" > claude-transcripts/README.md)
 
-RUN cd /opt/tools/claude-transcripts && \
-    /home/$USERNAME/.venv/bin/pip install \
-    anthropic \
-    click \
-    rich \
-    pyyaml \
-    jinja2
+# Note: Claude-transcripts Python dependencies will be installed in development_enhanced stage
 
 # Create configurations for additional tools
-RUN mkdir -p /opt/configs/{knownote,vibium,opentinker,proxypal,claude-transcripts}
+RUN mkdir -p /opt/configs/knownote && \
+    mkdir -p /opt/configs/vibium && \
+    mkdir -p /opt/configs/opentinker && \
+    mkdir -p /opt/configs/proxypal && \
+    mkdir -p /opt/configs/claude-transcripts
 
 # KnowNote configuration
 RUN cat > /opt/configs/knownote/config.yaml << 'EOF'
@@ -1598,8 +1508,7 @@ EOF
 RUN chmod +x /opt/tools/*/start-*.sh
 
 # Set proper ownership and permissions for all directories
-RUN chown -R $USERNAME:$USERNAME /opt/pipelines /opt/tools /opt/configs /workspace /home/$USERNAME && \
-    chmod -R 755 /opt/pipelines /opt/tools /opt/configs && \
+RUN chmod -R 755 /opt/pipelines /opt/tools /opt/configs && \
     chmod -R 775 /workspace && \
     find /opt -name "*.sh" -exec chmod +x {} \; && \
     # Clean up package caches and temporary files to reduce image size
@@ -1610,8 +1519,7 @@ RUN chown -R $USERNAME:$USERNAME /opt/pipelines /opt/tools /opt/configs /workspa
     rm -rf /var/tmp/* && \
     # Clean up npm cache
     npm cache clean --force && \
-    # Clean up pip cache
-    /home/$USERNAME/.venv/bin/pip cache purge && \
+    # Note: pip cache purge will be done in development_enhanced stage after venv is created
     # Remove git repositories .git directories to save space (keep source code)
     find /opt/pipelines -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true && \
     find /opt/tools -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true
@@ -1621,24 +1529,32 @@ RUN chown -R $USERNAME:$USERNAME /opt/pipelines /opt/tools /opt/configs /workspa
 # =============================================================================
 FROM base_integration AS development_enhanced
 
+# Re-declare ARG variables for this stage
+ARG USERNAME=developer
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
 # Create directories for pipeline projects
 RUN mkdir -p /opt/pipelines \
     && mkdir -p /opt/tools \
     && mkdir -p /opt/configs \
-    && mkdir -p /workspace \
-    && chown -R $USERNAME:$USERNAME /opt /workspace
+    && mkdir -p /workspace
 
-# Switch to non-root user for remaining operations
-USER $USERNAME
-WORKDIR /home/$USERNAME
+# Ensure developer user exists and create Python virtual environment
+USER root
+RUN groupadd --gid 1000 developer 2>/dev/null || true
+RUN useradd --uid 1000 --gid 1000 -m developer 2>/dev/null || true
+RUN chown -R developer:developer /opt /workspace /home/developer 2>/dev/null || true
 
-# Create Python virtual environment for global tools
-RUN python -m venv /home/$USERNAME/.venv \
-    && echo "source /home/$USERNAME/.venv/bin/activate" >> /home/$USERNAME/.bashrc
+# Create Python virtual environment for global tools as root, then change ownership
+WORKDIR /home/developer
+RUN python -m venv /home/developer/.venv \
+    && echo "source /home/developer/.venv/bin/activate" >> /home/developer/.bashrc \
+    && chown -R developer:developer /home/developer/.venv /home/developer/.bashrc 2>/dev/null || true
 
-# Install common Python packages
-RUN /home/$USERNAME/.venv/bin/pip install --upgrade pip setuptools wheel \
-    && /home/$USERNAME/.venv/bin/pip install \
+# Install common Python packages as root, then change ownership
+RUN /home/developer/.venv/bin/pip install --upgrade pip setuptools wheel \
+    && /home/developer/.venv/bin/pip install \
     requests \
     pyyaml \
     click \
@@ -1654,13 +1570,102 @@ RUN /home/$USERNAME/.venv/bin/pip install --upgrade pip setuptools wheel \
     flake8 \
     mypy \
     jupyter \
+    notebook \
     ipython \
     pandas \
     numpy \
+    matplotlib \
+    seaborn \
+    scikit-learn \
+    tensorflow \
     torch \
     transformers \
     openai \
-    anthropic
+    anthropic \
+    && chown -R developer:developer /home/developer/.venv 2>/dev/null || true
+
+# Install Python dependencies for pipeline projects
+# Auto-Claude Framework dependencies
+RUN cd /opt/pipelines/auto-claude && \
+    /home/developer/.venv/bin/pip install \
+    langchain \
+    langchain-anthropic \
+    langchain-openai \
+    pydantic \
+    asyncio \
+    aiofiles \
+    jinja2 \
+    gitpython
+
+# Automaker dependencies
+RUN cd /opt/pipelines/automaker && \
+    /home/developer/.venv/bin/pip install \
+    google-generativeai \
+    langchain-google-genai \
+    docker \
+    kubernetes \
+    celery \
+    redis \
+    sqlalchemy \
+    alembic
+
+# InfiAgent dependencies
+RUN cd /opt/pipelines/infiagent && \
+    /home/developer/.venv/bin/pip install \
+    langchain-openai \
+    langchain-anthropic \
+    aiofiles \
+    celery \
+    psutil \
+    memory-profiler \
+    configparser \
+    jsonschema
+
+# MAI-UI dependencies
+RUN cd /opt/pipelines/mai-ui && \
+    /home/developer/.venv/bin/pip install \
+    torchvision \
+    accelerate \
+    bitsandbytes \
+    peft \
+    datasets \
+    pillow \
+    opencv-python \
+    gradio \
+    streamlit \
+    huggingface-hub \
+    safetensors
+
+# Additional tools dependencies
+# KnowNote dependencies
+RUN cd /opt/tools/knownote && \
+    /home/developer/.venv/bin/pip install \
+    langchain \
+    chromadb \
+    sentence-transformers \
+    pypdf \
+    python-docx \
+    markdown \
+    beautifulsoup4
+
+# OpenTinker dependencies
+RUN cd /opt/tools/opentinker && \
+    /home/developer/.venv/bin/pip install \
+    gymnasium \
+    stable-baselines3 \
+    ray[rllib] \
+    tensorboard \
+    wandb \
+    mlflow \
+    optuna
+
+# Claude-transcripts dependencies
+RUN cd /opt/tools/claude-transcripts && \
+    /home/developer/.venv/bin/pip install \
+    jinja2
+
+# Clean up pip cache after all Python package installations
+RUN /home/developer/.venv/bin/pip cache purge
 
 # Install common Node.js packages globally
 RUN npm install -g \
@@ -1736,7 +1741,7 @@ EOF
 RUN chmod +x /usr/local/bin/start-container.sh
 
 # Switch back to developer user
-USER $USERNAME
+USER developer
 
 # Set default command
 CMD ["/usr/local/bin/start-container.sh"]

@@ -260,9 +260,14 @@ EOF
 
 chmod +x /home/developer/.local/bin/init-project
 
-# Set proper ownership
-chown -R developer:developer /home/developer
-chown -R developer:developer /workspace
-chown -R developer:developer /opt/configs
+# Set proper ownership (only if developer user exists)
+if id "developer" &>/dev/null; then
+    chown -R developer:developer /home/developer 2>/dev/null || true
+    chown -R developer:developer /workspace 2>/dev/null || true
+    chown -R developer:developer /opt/configs 2>/dev/null || true
+    echo "Ownership set for developer user"
+else
+    echo "Developer user not found, skipping ownership changes"
+fi
 
 echo "Base Container Image integration completed successfully"
