@@ -1696,8 +1696,16 @@ WORKDIR /workspace
 # Expose common development ports
 EXPOSE 3000 8000 8080 9000
 
-# Create startup script
+# Ensure developer user exists in final stage
 USER root
+RUN if id ubuntu >/dev/null 2>&1; then userdel -r ubuntu 2>/dev/null || true; fi \
+    && groupadd --gid 1000 developer 2>/dev/null || groupmod -g 1000 developer 2>/dev/null || true \
+    && useradd --uid 1000 --gid 1000 -m developer 2>/dev/null || usermod -u 1000 -g 1000 developer 2>/dev/null || true \
+    && echo developer ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/developer \
+    && chmod 0440 /etc/sudoers.d/developer \
+    && chown -R developer:developer /opt /workspace /home/developer 2>/dev/null || true
+
+# Create startup script
 COPY scripts/base-container-setup.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/base-container-setup.sh && \
     /usr/local/bin/base-container-setup.sh
