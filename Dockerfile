@@ -6,18 +6,32 @@
 # =============================================================================
 FROM ubuntu:24.04 AS base
 
-# Set environment variables to prevent interactive prompts
+# Set timezone FIRST (before any apt-get operations)
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=UTC
+ENV TZ=America/Detroit
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
+
+# Configure timezone non-interactively
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Create non-root user for development
 ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
-# Update system and install essential packages
+# Create user first (before package installations)
+RUN apt-get update \
+     && apt-get install -y sudo \
+     && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
+     && chmod 0440 /etc/sudoers.d/ubuntu
+    
+# RUN groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/null || true \
+#     && useradd --uid 1000 --gid 1000 -m ubuntu 2>/dev/null || usermod -u 1000 -g 1000 ubuntu 2>/dev/null || true \
+#     && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
+#     && chmod 0440 /etc/sudoers.d/ubuntu
+
+# Update system and install all essential packages in one layer
 RUN apt-get update && apt-get install -y \
     # Essential system tools
     curl \
@@ -44,19 +58,11 @@ RUN apt-get update && apt-get install -y \
     net-tools \
     iputils-ping \
     telnet \
+    netcat-openbsd \
     # Process management
     supervisor \
+    sudo \
     # Clean up
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create user with sudo privileges
-RUN groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/null || true \
-    && useradd --uid 1000 --gid 1000 -m ubuntu 2>/dev/null || usermod -u 1000 -g 1000 ubuntu 2>/dev/null || true \
-    && apt-get update \
-    && apt-get install -y sudo \
-    && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
-    && chmod 0440 /etc/sudoers.d/ubuntu \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -64,13 +70,7 @@ RUN groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/nul
 # Desktop Environment Setup - GNOME Desktop with NoVNC
 # =============================================================================
 
-# Install GNOME Desktop Environment
-# RUN apt-get update && apt-get install -y \
-#     # GNOME Desktop packages
-#     ubuntu-desktop-minimal \
-#     && apt-get clean \
-#     && rm -rf /var/lib/apt/lists/*
-
+# Install GNOME Desktop, NoVNC, and all dependencies in one layer
 RUN apt-get update && apt-get install -y \
     # GNOME Desktop packages \
     ubuntu-desktop-minimal \
@@ -87,6 +87,10 @@ RUN apt-get update && apt-get install -y \
     # VNC server \
     tigervnc-standalone-server \
     tigervnc-common \
+    # NoVNC and dependencies \
+    python3-numpy \
+    novnc \
+    websockify \
     # Fonts and rendering \
     fonts-liberation \
     fonts-dejavu \
@@ -96,15 +100,6 @@ RUN apt-get update && apt-get install -y \
     # Additional utilities \
     xdotool \
     wmctrl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install NoVNC and dependencies
-RUN apt-get update && apt-get install -y \
-    python3-numpy \
-    novnc \
-    websockify \
-    net-tools \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -281,51 +276,38 @@ RUN git clone https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup
     echo "Base container repository not accessible, using fallback configuration"
 
 # Install additional tools commonly found in agentic coding environments
+# Note: curl, wget, jq, htop, netcat-openbsd already installed in base stage
 RUN apt-get update && apt-get install -y \
-    # Terminal and shell enhancements
+    # Terminal and shell enhancements \
     zsh \
     tmux \
     screen \
-    # File management
+    # File management \
     ranger \
     mc \
-    # Network and API tools
+    # Network and API tools \
     httpie \
-    curl \
-    wget \
-    netcat-openbsd \
-    # Text processing
-    jq \
+    # Text processing \
     xmlstarlet \
-    # Monitoring and system tools
-    htop \
+    # Monitoring and system tools \
     sysstat \
-    # Development utilities
+    # Development utilities \
     make \
     cmake \
     autoconf \
     automake \
     libtool \
     pkg-config \
-    # Database clients (make optional to avoid build failures)
+    # Database clients \
     sqlite3 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install fish shell separately (optional)
-RUN apt-get update && apt-get install -y fish || echo "Fish shell installation failed, continuing..." && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install fzf separately (optional)
-RUN apt-get update && apt-get install -y fzf || echo "fzf installation failed, continuing..." && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install additional database clients separately (optional)
-RUN apt-get update && apt-get install -y \
-    postgresql-client \
-    mysql-client \
-    redis-tools \
-    || echo "Some database clients failed to install, continuing..." && \
+# Install optional tools (fish, fzf, database clients) in one layer
+RUN apt-get update && \
+    (apt-get install -y fish || echo "Fish shell installation failed, continuing...") && \
+    (apt-get install -y fzf || echo "fzf installation failed, continuing...") && \
+    (apt-get install -y postgresql-client mysql-client redis-tools || echo "Some database clients failed to install, continuing...") && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -337,7 +319,7 @@ RUN sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/inst
 
 # Install additional Python packages for agentic coding (skip for now, will be done in development_enhanced stage)
 # RUN /home/$USERNAME/.venv/bin/pip install \
-#     # AI and ML libraries
+#     # AI and ML libraries \
 #     langchain \
 #     langchain-community \
 #     langchain-openai \
@@ -345,43 +327,42 @@ RUN sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/inst
 #     chromadb \
 #     faiss-cpu \
 #     sentence-transformers \
-#     # API and web frameworks
+#     # API and web frameworks \
 #     flask \
 #     django \
 #     starlette \
-#     # Data processing
+#     # Data processing \
 #     sqlalchemy \
 #     alembic \
 #     redis \
 #     celery \
-#     # Development tools
+#     # Development tools \
 #     pre-commit \
 #     bandit \
 #     safety \
-#     # Documentation
+#     # Documentation \
 #     mkdocs \
 #     sphinx
 
 # Install additional Node.js packages for agentic development
 RUN npm install -g \
-    # API development
+    # API development \
     @nestjs/cli \
     fastify-cli \
-    # Testing and quality
+    # Testing and quality \
     mocha \
     chai \
     nyc \
-    # Build tools
+    # Build tools \
     rollup \
     vite \
-    # Utilities
+    # Utilities \
     concurrently \
     cross-env \
     dotenv-cli
 
 # Install Kiro CLI
-RUN wget https://desktop-release.q.us-east-1.amazonaws.com/latest/kiro-cli.deb \
-    && dpkg -i kiro-cli.deb \
+RUN curl -fsSL https://cli.kiro.dev/install | bash \
     && apt-get install -f
 
 # Create Kiro startup script
@@ -1653,16 +1634,16 @@ RUN chmod +x /opt/tools/*/start-*.sh
 RUN chmod -R 755 /opt/pipelines /opt/tools /opt/configs && \
     chmod -R 775 /workspace && \
     find /opt -name "*.sh" -exec chmod +x {} \; && \
-    # Clean up package caches and temporary files to reduce image size
+    # Clean up package caches and temporary files to reduce image size \
     apt-get autoremove -y && \
     apt-get autoclean && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /tmp/* && \
     rm -rf /var/tmp/* && \
-    # Clean up npm cache
+    # Clean up npm cache \
     npm cache clean --force && \
-    # Note: pip cache purge will be done in development_enhanced stage after venv is created
-    # Remove git repositories .git directories to save space (keep source code)
+    # Note: pip cache purge will be done in development_enhanced stage after venv is created \
+    # Remove git repositories .git directories to save space (keep source code) \
     find /opt/pipelines -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true && \
     find /opt/tools -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true
 
@@ -1682,11 +1663,8 @@ RUN mkdir -p /opt/pipelines \
     && mkdir -p /opt/configs \
     && mkdir -p /workspace
 
-# Ensure ubuntu user exists and create Python virtual environment
+# Ensure proper ownership and create Python virtual environment
 USER root
-RUN groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/null || true
-RUN useradd --uid 1000 --gid 1000 -m ubuntu 2>/dev/null || usermod -u 1000 -g 1000 ubuntu 2>/dev/null || true
-RUN echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu && chmod 0440 /etc/sudoers.d/ubuntu
 RUN chown -R ubuntu:ubuntu /opt /workspace /home/ubuntu 2>/dev/null || true
 
 # Create Python virtual environment for global tools as root, then change ownership
@@ -1842,14 +1820,9 @@ EXPOSE 3000 8000 8080 9000
 # Expose VNC and NoVNC ports
 EXPOSE 5901 6080
 
-# Ensure ubuntu user exists in final stage
+# Ensure proper ownership in final stage
 USER root
-RUN if id ubuntu >/dev/null 2>&1; then userdel -r ubuntu 2>/dev/null || true; fi \
-    && groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/null || true \
-    && useradd --uid 1000 --gid 1000 -m ubuntu 2>/dev/null || usermod -u 1000 -g 1000 ubuntu 2>/dev/null || true \
-    && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
-    && chmod 0440 /etc/sudoers.d/ubuntu \
-    && chown -R ubuntu:ubuntu /opt /workspace /home/ubuntu 2>/dev/null || true
+RUN chown -R ubuntu:ubuntu /opt /workspace /home/ubuntu 2>/dev/null || true
 
 # Create startup script
 COPY scripts/base-container-setup.sh /usr/local/bin/
