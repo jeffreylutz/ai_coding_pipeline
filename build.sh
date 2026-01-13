@@ -16,6 +16,7 @@ NC='\033[0m' # No Color
 IMAGE_NAME="agentic-coding-pipeline"
 IMAGE_TAG="latest"
 DOCKERFILE="Dockerfile"
+COMPOSE_FILE="compose.yml"
 
 # Function to print colored output
 print_status() {
@@ -37,41 +38,48 @@ print_error() {
 # Function to check prerequisites
 check_prerequisites() {
     print_status "Checking prerequisites..."
-    
+
     # Check if Docker is installed
     if ! command -v docker &> /dev/null; then
         print_error "Docker is not installed. Please install Docker first."
         exit 1
     fi
-    
+
     # Check if Docker is running
     if ! docker info &> /dev/null; then
         print_error "Docker is not running. Please start Docker first."
         exit 1
     fi
-    
+
+    # Check if docker-compose is available
+    if ! command -v docker-compose &> /dev/null; then
+        print_error "docker-compose is not available. Please install docker-compose."
+        exit 1
+    fi
+
     # Check if Dockerfile exists
     if [ ! -f "$DOCKERFILE" ]; then
         print_error "Dockerfile not found in current directory."
         exit 1
     fi
-    
+
+    # Check if compose.yml exists
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        print_error "compose.yml not found in current directory."
+        exit 1
+    fi
+
     print_success "Prerequisites check passed."
 }
 
 # Function to build the Docker image
 build_image() {
-    print_status "Building Docker image: $IMAGE_NAME:$IMAGE_TAG"
+    print_status "Building Docker image with docker-compose: $IMAGE_NAME:$IMAGE_TAG"
     print_status "This may take several minutes..."
-    
-    # Build with BuildKit for better performance and caching
-    DOCKER_BUILDKIT=1 docker build \
-        --tag "$IMAGE_NAME:$IMAGE_TAG" \
-        --file "$DOCKERFILE" \
-        --progress=plain \
-        --no-cache \
-        .
-    
+
+    # Build with docker-compose using BuildKit for better performance and caching
+    DOCKER_BUILDKIT=1 docker-compose -f "$COMPOSE_FILE" build --no-cache --progress=plain
+
     if [ $? -eq 0 ]; then
         print_success "Docker image built successfully!"
     else
@@ -123,14 +131,17 @@ show_usage() {
     print_success "Build completed successfully!"
     echo ""
     print_status "Usage Instructions:"
-    echo "  1. Run with Docker:"
-    echo "     docker run -it --privileged -p 3000:3000 -p 8000:8000 -p 8080:8080 -p 9000:9000 $IMAGE_NAME:$IMAGE_TAG"
+    echo "  1. Run with Docker Compose (recommended):"
+    echo "     docker-compose -f $COMPOSE_FILE up -d"
     echo ""
-    echo "  2. Run with Docker Compose:"
-    echo "     docker-compose up -d"
-    echo ""
-    echo "  3. Access the container:"
+    echo "  2. Access the container:"
     echo "     docker exec -it agentic-coding-container bash"
+    echo ""
+    echo "  3. View logs:"
+    echo "     docker-compose -f $COMPOSE_FILE logs -f"
+    echo ""
+    echo "  4. Stop the container:"
+    echo "     docker-compose -f $COMPOSE_FILE down"
     echo ""
     print_status "The container includes all multi-agent coding pipeline projects and development tools."
 }

@@ -343,8 +343,8 @@ class TestFullSystemIntegration:
     
     def test_docker_compose_integration(self):
         """Test Docker Compose integration and deployment."""
-        if not os.path.exists("docker-compose.yml"):
-            pytest.skip("docker-compose.yml not found")
+        if not os.path.exists("compose.yml"):
+            pytest.skip("compose.yml not found")
         
         # Test docker-compose configuration
         result = subprocess.run(

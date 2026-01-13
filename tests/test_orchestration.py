@@ -39,8 +39,8 @@ class TestOrchestrationCompatibility:
             pass
     
     def test_docker_compose_configuration_validity(self):
-        """Test that docker-compose.yml is valid and well-configured."""
-        assert os.path.exists("docker-compose.yml"), "docker-compose.yml must exist"
+        """Test that compose.yml is valid and well-configured."""
+        assert os.path.exists("compose.yml"), "compose.yml must exist"
         
         # Test docker-compose config validation
         result = subprocess.run(
@@ -49,13 +49,13 @@ class TestOrchestrationCompatibility:
             text=True,
             cwd="."
         )
-        assert result.returncode == 0, f"docker-compose.yml validation failed: {result.stderr}"
+        assert result.returncode == 0, f"compose.yml validation failed: {result.stderr}"
         
         # Parse and validate compose file content
-        with open("docker-compose.yml", "r") as f:
+        with open("compose.yml", "r") as f:
             compose_content = yaml.safe_load(f)
         
-        assert "services" in compose_content, "docker-compose.yml should have services section"
+        assert "services" in compose_content, "compose.yml should have services section"
         
         # Test main service configuration
         services = compose_content["services"]
@@ -126,8 +126,8 @@ class TestOrchestrationCompatibility:
         
     def test_docker_compose_deployment(self):
         """Test that docker-compose deployment works correctly."""
-        if not os.path.exists("docker-compose.yml"):
-            pytest.skip("docker-compose.yml not found")
+        if not os.path.exists("compose.yml"):
+            pytest.skip("compose.yml not found")
         
         # Test docker-compose up (dry run)
         result = subprocess.run(

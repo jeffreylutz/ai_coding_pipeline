@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 IMAGE_NAME="agentic-coding-pipeline:latest"
-TEST_CONTAINER_NAME="agentic-test-container"
+COMPOSE_FILE="compose.yml"
 
 # Function to print colored output
 print_status() {
@@ -36,25 +36,37 @@ print_error() {
 # Function to check prerequisites
 check_prerequisites() {
     print_status "Checking test prerequisites..."
-    
+
     # Check if Docker is running
     if ! docker info &> /dev/null; then
         print_error "Docker is not running. Please start Docker first."
         exit 1
     fi
-    
+
+    # Check if docker-compose is available
+    if ! command -v docker-compose &> /dev/null; then
+        print_error "docker-compose is not available. Please install docker-compose."
+        exit 1
+    fi
+
+    # Check if $COMPOSE_FILE exists
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        print_error "$COMPOSE_FILE not found in current directory."
+        exit 1
+    fi
+
     # Check if Python is available for tests
     if ! command -v python3 &> /dev/null; then
         print_error "Python 3 is not available. Required for running tests."
         exit 1
     fi
-    
+
     # Check if pytest is available
     if ! python3 -c "import pytest" &> /dev/null; then
         print_warning "pytest not found. Installing test dependencies..."
         pip3 install -r tests/requirements.txt
     fi
-    
+
     print_success "Prerequisites check passed."
 }
 
@@ -85,7 +97,7 @@ run_build_tests() {
     fi
     
     # Test docker-compose configuration
-    if [ -f "docker-compose.yml" ]; then
+    if [ -f "docker-$COMPOSE_FILE" ]; then
         print_status "Validating docker-compose configuration..."
         docker-compose config --quiet || {
             print_error "docker-compose configuration validation failed"
@@ -100,14 +112,10 @@ run_build_tests() {
 # Function to build the container if needed
 build_container_if_needed() {
     print_status "Checking if container image exists..."
-    
+
     if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
-        print_warning "Container image not found. Building..."
-        if [ -f "build.sh" ]; then
-            ./build.sh
-        else
-            docker build -t "$IMAGE_NAME" .
-        fi
+        print_warning "Container image not found. Building with docker-compose..."
+        docker-compose -f "$COMPOSE_FILE" build
     else
         print_success "Container image found: $IMAGE_NAME"
     fi
@@ -118,7 +126,7 @@ run_property_tests() {
     print_status "Running property-based tests..."
 
     # Run all property tests with appropriate settings
-    # Note: Run from project root so tests can find Dockerfile and docker-compose.yml
+    # Note: Run from project root so tests can find Dockerfile and docker-$COMPOSE_FILE
     python3 -m pytest \
         tests/test_base_container.py \
         tests/test_kiro_installation.py \
@@ -146,101 +154,101 @@ run_property_tests() {
 # Function to run integration tests
 run_integration_tests() {
     print_status "Running integration tests..."
-    
+
     # Test container startup
-    print_status "Testing container startup..."
-    docker run --rm --name "$TEST_CONTAINER_NAME" -d "$IMAGE_NAME" > /dev/null
-    
+    print_status "Testing container startup with docker-compose..."
+    docker-compose -f $COMPOSE_FILE up -d > /dev/null
+
     # Wait for container to start
     sleep 5
-    
+
     # Test basic functionality
-    if docker exec "$TEST_CONTAINER_NAME" agentic-status > /dev/null 2>&1; then
+    if docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline agentic-status > /dev/null 2>&1; then
         print_success "Container startup and basic functionality test passed"
     else
         print_error "Container startup or basic functionality test failed"
-        docker logs "$TEST_CONTAINER_NAME"
-        docker rm -f "$TEST_CONTAINER_NAME" > /dev/null 2>&1
+        docker-compose -f $COMPOSE_FILE logs
+        docker-compose -f $COMPOSE_FILE down > /dev/null 2>&1
         return 1
     fi
-    
+
     # Test pipeline projects accessibility
     print_status "Testing pipeline projects accessibility..."
     for project in kiro auto-claude continuous-claude automaker infiagent mai-ui loki-mode; do
-        if docker exec "$TEST_CONTAINER_NAME" test -d "/opt/pipelines/$project"; then
+        if docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline test -d "/opt/pipelines/$project"; then
             print_success "Pipeline project $project is accessible"
         else
             print_warning "Pipeline project $project not found"
         fi
     done
-    
+
     # Test additional tools accessibility
     print_status "Testing additional tools accessibility..."
     for tool in knownote vibium opentinker proxypal claude-transcripts; do
-        if docker exec "$TEST_CONTAINER_NAME" test -d "/opt/tools/$tool"; then
+        if docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline test -d "/opt/tools/$tool"; then
             print_success "Tool $tool is accessible"
         else
             print_warning "Tool $tool not found"
         fi
     done
-    
+
     # Cleanup
-    docker rm -f "$TEST_CONTAINER_NAME" > /dev/null 2>&1
-    
+    docker-compose -f $COMPOSE_FILE down > /dev/null 2>&1
+
     return 0
 }
 
 # Function to run performance tests
 run_performance_tests() {
     print_status "Running performance tests..."
-    
+
     # Test image size
     local image_size=$(docker image inspect "$IMAGE_NAME" --format "{{.Size}}")
     local image_size_gb=$((image_size / 1024 / 1024 / 1024))
-    
+
     print_status "Container image size: ${image_size_gb}GB"
-    
+
     if [ $image_size_gb -gt 8 ]; then
         print_warning "Container image size exceeds 8GB recommendation"
     else
         print_success "Container image size is within acceptable limits"
     fi
-    
+
     # Test container startup time
-    print_status "Testing container startup time..."
+    print_status "Testing container startup time with docker-compose..."
     local start_time=$(date +%s)
-    
-    docker run --rm --name "${TEST_CONTAINER_NAME}-perf" -d "$IMAGE_NAME" > /dev/null
-    
+
+    docker-compose -f $COMPOSE_FILE up -d > /dev/null
+
     # Wait for container to be ready
     local ready=false
     local timeout=60
     local elapsed=0
-    
+
     while [ $elapsed -lt $timeout ] && [ "$ready" = false ]; do
-        if docker exec "${TEST_CONTAINER_NAME}-perf" test -f /workspace/.ready 2>/dev/null || \
-           docker exec "${TEST_CONTAINER_NAME}-perf" agentic-status > /dev/null 2>&1; then
+        if docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline test -f /workspace/.ready 2>/dev/null || \
+           docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline agentic-status > /dev/null 2>&1; then
             ready=true
         else
             sleep 2
             elapsed=$((elapsed + 2))
         fi
     done
-    
+
     local end_time=$(date +%s)
     local startup_time=$((end_time - start_time))
-    
+
     print_status "Container startup time: ${startup_time} seconds"
-    
+
     if [ $startup_time -gt 30 ]; then
         print_warning "Container startup time exceeds 30 seconds"
     else
         print_success "Container startup time is acceptable"
     fi
-    
+
     # Cleanup
-    docker rm -f "${TEST_CONTAINER_NAME}-perf" > /dev/null 2>&1
-    
+    docker-compose -f $COMPOSE_FILE down > /dev/null 2>&1
+
     return 0
 }
 

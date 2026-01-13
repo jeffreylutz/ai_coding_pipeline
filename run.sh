@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 # Container configuration
 CONTAINER_NAME="agentic-coding-container"
 IMAGE_NAME="agentic-coding-pipeline:latest"
-COMPOSE_FILE="docker-compose.yml"
+COMPOSE_FILE="compose.yml"
 
 echo -e "${BLUE}=== Agentic Coding Pipeline Container Manager ===${NC}"
 echo ""
@@ -36,7 +36,7 @@ container_running() {
 # Stop the container if it's running
 if container_running; then
     echo -e "${YELLOW}Stopping running container: ${CONTAINER_NAME}...${NC}"
-    docker-compose down --timeout 30
+    docker-compose -f "$COMPOSE_FILE" down --timeout 30
     echo -e "${GREEN}Container stopped successfully${NC}"
 else
     echo -e "${BLUE}Container is not currently running${NC}"
@@ -56,7 +56,7 @@ echo -e "${BLUE}Starting new container...${NC}"
 echo ""
 
 # Start the container with docker-compose
-docker-compose up -d
+docker-compose -f "$COMPOSE_FILE" up -d
 
 echo ""
 echo -e "${GREEN}=== Container Started Successfully ===${NC}"
@@ -65,12 +65,12 @@ echo "Container Name: ${CONTAINER_NAME}"
 echo "Image: ${IMAGE_NAME}"
 echo ""
 echo "To view logs:"
-echo "  docker-compose logs -f"
+echo "  docker-compose -f ${COMPOSE_FILE} logs -f"
 echo ""
 echo "To access the container:"
 echo "  docker exec -it ${CONTAINER_NAME} bash"
 echo ""
 echo "To stop the container:"
-echo "  docker-compose down"
+echo "  docker-compose -f ${COMPOSE_FILE} down"
 echo ""
 echo -e "${GREEN}Container is ready for development!${NC}"

@@ -280,15 +280,15 @@ class TestDocumentationCompleteness:
             assert prereq.lower() in content.lower(), f"Prerequisites should mention {prereq}"
     
     def test_docker_compose_documentation(self):
-        """Test that docker-compose.yml is properly documented."""
-        assert os.path.exists("docker-compose.yml"), "docker-compose.yml should exist"
+        """Test that compose.yml is properly documented."""
+        assert os.path.exists("compose.yml"), "compose.yml should exist"
         
-        with open("docker-compose.yml", "r") as f:
+        with open("compose.yml", "r") as f:
             compose_content = f.read()
         
         # Test compose file has comments
         comment_lines = [line for line in compose_content.split('\n') if line.strip().startswith('#')]
-        assert len(comment_lines) >= 3, "docker-compose.yml should have explanatory comments"
+        assert len(comment_lines) >= 3, "compose.yml should have explanatory comments"
         
         # Test README mentions docker-compose
         with open("README.md", "r") as f:

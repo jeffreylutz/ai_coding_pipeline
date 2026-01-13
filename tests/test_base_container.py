@@ -49,8 +49,8 @@ class TestBaseContainerSetup:
             assert "FROM ubuntu:24.04" in content, "Must use Ubuntu 24.04 as base image"
     
     def test_docker_compose_exists(self):
-        """Test that docker-compose.yml exists and is valid."""
-        assert os.path.exists("docker-compose.yml"), "docker-compose.yml must exist"
+        """Test that compose.yml exists and is valid."""
+        assert os.path.exists("compose.yml"), "compose.yml must exist"
         
         # Test docker-compose config validation
         result = subprocess.run(
@@ -58,7 +58,7 @@ class TestBaseContainerSetup:
             capture_output=True,
             text=True
         )
-        assert result.returncode == 0, f"docker-compose.yml validation failed: {result.stderr}"
+        assert result.returncode == 0, f"compose.yml validation failed: {result.stderr}"
     
     @settings(max_examples=10, deadline=60000)  # 60 second deadline for Docker operations
     @given(
