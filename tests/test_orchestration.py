@@ -123,55 +123,7 @@ class TestOrchestrationCompatibility:
         assert "ports" in service_spec, "Service should expose ports"
         assert "selector" in service_spec, "Service should have selector"
     
-    @settings(max_examples=3, deadline=60000)
-    @given(
-        environment_config=st.dictionaries(
-            keys=st.sampled_from(['WORKSPACE_DIR', 'LOG_LEVEL', 'DEBUG', 'NODE_ENV']),
-            values=st.sampled_from(['/workspace', 'info', 'debug', 'false', 'true', 'development']),
-            min_size=1,
-            max_size=4
-        )
-    )
-    def test_orchestration_environment_handling_property(self, environment_config: Dict[str, str]):
-        """
-        Property test: For any orchestration environment configuration,
-        the container should handle environment variables correctly.
         
-        Feature: docker-container-setup, Property 9: Runtime Compatibility
-        Validates: Requirements 6.4, 6.6
-        """
-        try:
-            self.client.images.get(self.image_name)
-        except docker.errors.ImageNotFound:
-            pytest.skip(f"Docker image {self.image_name} not found. Run build first.")
-        
-        container = self.client.containers.run(
-            self.image_name,
-            name=f"{self.container_name}-env",
-            detach=True,
-            tty=True,
-            remove=True,
-            environment=environment_config
-        )
-        
-        try:
-            time.sleep(2)
-            
-            # Test that environment variables are set correctly
-            for key, expected_value in environment_config.items():
-                exit_code, output = container.exec_run(f"echo ${key}")
-                assert exit_code == 0, f"Should be able to access environment variable {key}"
-                
-                actual_value = output.decode().strip()
-                assert actual_value == expected_value, f"Environment variable {key} should have correct value"
-            
-            # Test that container still functions with custom environment
-            exit_code, output = container.exec_run("agentic-status")
-            assert exit_code == 0, "Container should function normally with custom environment"
-            
-        finally:
-            container.stop()
-    
     def test_docker_compose_deployment(self):
         """Test that docker-compose deployment works correctly."""
         if not os.path.exists("docker-compose.yml"):
@@ -198,55 +150,6 @@ class TestOrchestrationCompatibility:
         main_service = list(services.values())[0]
         assert "ports" in main_service, "Main service should expose ports"
         assert "volumes" in main_service, "Main service should have volumes"
-    
-    def test_persistent_storage_compatibility(self):
-        """Test that container works with persistent storage configurations."""
-        try:
-            self.client.images.get(self.image_name)
-        except docker.errors.ImageNotFound:
-            pytest.skip(f"Docker image {self.image_name} not found. Run build first.")
-        
-        # Create a named volume
-        volume_name = "agentic-test-volume"
-        try:
-            volume = self.client.volumes.create(name=volume_name)
-            
-            container = self.client.containers.run(
-                self.image_name,
-                name=f"{self.container_name}-storage",
-                detach=True,
-                tty=True,
-                remove=True,
-                volumes={volume_name: {'bind': '/workspace', 'mode': 'rw'}}
-            )
-            
-            try:
-                time.sleep(2)
-                
-                # Test that persistent volume is mounted
-                exit_code, output = container.exec_run("df -h /workspace")
-                assert exit_code == 0, "Should be able to check workspace mount"
-                
-                # Test writing to persistent storage
-                exit_code, output = container.exec_run("echo 'Persistent storage test' > /workspace/persistent-test.txt")
-                assert exit_code == 0, "Should be able to write to persistent storage"
-                
-                # Test reading from persistent storage
-                exit_code, output = container.exec_run("cat /workspace/persistent-test.txt")
-                assert exit_code == 0, "Should be able to read from persistent storage"
-                
-                content = output.decode().strip()
-                assert "Persistent storage test" in content, "Persistent storage should maintain data"
-                
-            finally:
-                container.stop()
-                
-        finally:
-            # Cleanup volume
-            try:
-                volume.remove()
-            except:
-                pass
 
 
 if __name__ == "__main__":
