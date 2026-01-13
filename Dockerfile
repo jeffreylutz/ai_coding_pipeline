@@ -366,6 +366,7 @@ RUN curl -fsSL https://cli.kiro.dev/install | bash \
     && apt-get install -f
 
 # Create Kiro startup script
+RUN mkdir -p /opt/pipelines/kiro
 RUN cat > /opt/pipelines/kiro/start-kiro.sh << 'EOF'
 #!/bin/bash
 # Kiro Autonomous Agent Startup Script
@@ -1825,9 +1826,9 @@ USER root
 RUN chown -R ubuntu:ubuntu /opt /workspace /home/ubuntu 2>/dev/null || true
 
 # Create startup script
-COPY scripts/base-container-setup.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/base-container-setup.sh && \
-    /usr/local/bin/base-container-setup.sh
+COPY scripts/base-container-setup.sh /usr/local/bin/base-container-setup.sh
+RUN chmod +x /usr/local/bin/base-container-setup.sh \
+    && /usr/local/bin/base-container-setup.sh
 
 # Fix: Create symlinks for agentic commands in system path
 RUN if [ -f /home/ubuntu/.local/bin/agentic-status ]; then \
