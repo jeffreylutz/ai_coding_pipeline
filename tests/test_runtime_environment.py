@@ -75,8 +75,9 @@ class TestRuntimeEnvironmentSetup:
                 assert exit_code == 0, f"Global npm package {package} should be installed"
             
             # Test TypeScript compilation
+            # Fix: Use list format for proper shell quoting
             exit_code, output = container.exec_run(
-                'bash -c "echo \'console.log(\"Hello TypeScript\");\' > /tmp/test.ts && tsc /tmp/test.ts"'
+                ["bash", "-c", "echo 'console.log(\"Hello TypeScript\");' > /tmp/test.ts && tsc /tmp/test.ts"]
             )
             assert exit_code == 0, "TypeScript should be able to compile files"
             
@@ -112,24 +113,36 @@ class TestRuntimeEnvironmentSetup:
             assert exit_code == 0, "pip should be installed"
             
             # Test virtual environment
-            exit_code, output = container.exec_run("source /home/developer/.venv/bin/activate && python --version")
+            # Fix: Run through bash to source venv
+            exit_code, output = container.exec_run(["bash", "-c", "source /home/developer/.venv/bin/activate && python --version"])
             assert exit_code == 0, "Virtual environment should be accessible"
-            
+
             # Test Python packages in virtual environment
+            # Note: Package names may differ from import names (e.g., pyyaml -> yaml)
             required_packages = [
-                "requests", "pyyaml", "click", "rich", "fastapi", 
-                "pytest", "black", "jupyter", "torch", "transformers"
+                ("requests", "requests"),
+                ("pyyaml", "yaml"),  # Package name: pyyaml, Import name: yaml
+                ("click", "click"),
+                ("rich", "rich"),
+                ("fastapi", "fastapi"),
+                ("pytest", "pytest"),
+                ("black", "black"),
+                ("jupyter", "jupyter"),
+                ("torch", "torch"),
+                ("transformers", "transformers")
             ]
-            
-            for package in required_packages:
+
+            for package_name, import_name in required_packages:
+                # Fix: Run through bash to source venv
                 exit_code, output = container.exec_run(
-                    f"source /home/developer/.venv/bin/activate && python -c 'import {package}'"
+                    ["bash", "-c", f"source /home/developer/.venv/bin/activate && python -c 'import {import_name}'"]
                 )
-                assert exit_code == 0, f"Python package {package} should be importable"
-            
+                assert exit_code == 0, f"Python package {package_name} (import as '{import_name}') should be importable"
+
             # Test Jupyter notebook
+            # Fix: Run through bash to source venv
             exit_code, output = container.exec_run(
-                "source /home/developer/.venv/bin/activate && jupyter --version"
+                ["bash", "-c", "source /home/developer/.venv/bin/activate && jupyter --version"]
             )
             assert exit_code == 0, "Jupyter should be installed and accessible"
             
@@ -170,9 +183,10 @@ class TestRuntimeEnvironmentSetup:
             time.sleep(2)
             
             # Test file creation and editing
-            safe_content = file_content.replace('"', '\\"').replace('`', '\\`').replace('$', '\\$')
+            # Fix: Use printf with %s to avoid shell escaping issues
+            # This is more robust than trying to escape quotes, backticks, and dollar signs
             exit_code, output = container.exec_run(
-                f'bash -c "echo \\"{safe_content}\\" > /workspace/{project_name}.txt"'
+                ["bash", "-c", f"printf '%s' {repr(file_content)} > /workspace/{project_name}.txt"]
             )
             assert exit_code == 0, "Should be able to create files in workspace"
             
@@ -181,30 +195,34 @@ class TestRuntimeEnvironmentSetup:
             assert exit_code == 0, "Should be able to read created files"
             
             # Test Git operations
+            # Fix: Run through bash for cd &&
             exit_code, output = container.exec_run(
-                f"cd /workspace && git init {project_name}-repo"
+                ["bash", "-c", f"cd /workspace && git init {project_name}-repo"]
             )
             assert exit_code == 0, "Should be able to initialize Git repository"
-            
+
+            # Fix: Run through bash for cd &&
             exit_code, output = container.exec_run(
-                f"cd /workspace/{project_name}-repo && git add . || true"
+                ["bash", "-c", f"cd /workspace/{project_name}-repo && git add . || true"]
             )
             assert exit_code == 0, "Git add should work (even if no files)"
-            
+
             # Test npm project creation
+            # Fix: Run through bash for cd &&
             exit_code, output = container.exec_run(
-                f"cd /workspace && npm init -y --name {project_name}"
+                ["bash", "-c", f"cd /workspace && npm init -y --name {project_name}"]
             )
             assert exit_code == 0, "Should be able to create npm project"
-            
+
             # Test Python script execution
             exit_code, output = container.exec_run(
-                f'bash -c "cd /workspace && echo \\"print(\'Hello from {project_name}\')\\" > {project_name}.py"'
+                ["bash", "-c", f'cd /workspace && echo "print(\'Hello from {project_name}\')" > {project_name}.py']
             )
             assert exit_code == 0, "Should be able to create Python files"
-            
+
+            # Fix: Run through bash for cd && source &&
             exit_code, output = container.exec_run(
-                f"cd /workspace && source /home/developer/.venv/bin/activate && python {project_name}.py"
+                ["bash", "-c", f"cd /workspace && source /home/developer/.venv/bin/activate && python {project_name}.py"]
             )
             assert exit_code == 0, "Should be able to execute Python scripts"
             
@@ -286,7 +304,8 @@ class TestRuntimeEnvironmentSetup:
             
             # Test that environment variables are accessible
             for key, expected_value in env_vars.items():
-                exit_code, output = container.exec_run(f"echo ${key}")
+                # Fix: Run through bash to expand environment variables
+                exit_code, output = container.exec_run(["bash", "-c", f"echo ${key}"])
                 assert exit_code == 0, f"Should be able to access environment variable {key}"
                 actual_value = output.decode().strip()
                 assert actual_value == expected_value, f"Environment variable {key} should have correct value"
@@ -320,52 +339,61 @@ class TestRuntimeEnvironmentSetup:
             time.sleep(2)
             
             # Test integrated workflow: Create a TypeScript project with Python backend
-            
+
             # 1. Create TypeScript project
+            # Fix: Run through bash for cd &&
             exit_code, output = container.exec_run(
-                "cd /workspace && npm init -y --name test-integration"
+                ["bash", "-c", "cd /workspace && npm init -y --name test-integration"]
             )
             assert exit_code == 0, "Should create npm project"
-            
+
             # 2. Install TypeScript dependencies
+            # Fix: Run through bash for cd &&
             exit_code, output = container.exec_run(
-                "cd /workspace && npm install --save-dev typescript @types/node"
+                ["bash", "-c", "cd /workspace && npm install --save-dev typescript @types/node"]
             )
             assert exit_code == 0, "Should install TypeScript dependencies"
-            
+
             # 3. Create TypeScript file
+            # Fix: Run through bash for cd &&
             exit_code, output = container.exec_run(
-                'cd /workspace && echo "console.log(\\"Hello from TypeScript\\");" > index.ts'
+                ["bash", "-c", 'cd /workspace && echo "console.log(\\"Hello from TypeScript\\");" > index.ts']
             )
             assert exit_code == 0, "Should create TypeScript file"
             
             # 4. Compile TypeScript
-            exit_code, output = container.exec_run("cd /workspace && npx tsc index.ts")
+            # Fix: Run through bash for cd &&
+            exit_code, output = container.exec_run(["bash", "-c", "cd /workspace && npx tsc index.ts"])
             assert exit_code == 0, "Should compile TypeScript"
-            
+
             # 5. Create Python script
+            # Fix: Run through bash for cd &&
             exit_code, output = container.exec_run(
-                'cd /workspace && echo "print(\\"Hello from Python\\")" > app.py'
+                ["bash", "-c", 'cd /workspace && echo "print(\\"Hello from Python\\")" > app.py']
             )
             assert exit_code == 0, "Should create Python script"
-            
+
             # 6. Run Python script
+            # Fix: Run through bash for cd && source &&
             exit_code, output = container.exec_run(
-                "cd /workspace && source /home/developer/.venv/bin/activate && python app.py"
+                ["bash", "-c", "cd /workspace && source /home/developer/.venv/bin/activate && python app.py"]
             )
             assert exit_code == 0, "Should execute Python script"
             output_text = output.decode().strip()
             assert "Hello from Python" in output_text, "Python script should produce expected output"
-            
+
             # 7. Test Git workflow
-            exit_code, output = container.exec_run("cd /workspace && git init")
+            # Fix: Run through bash for cd &&
+            exit_code, output = container.exec_run(["bash", "-c", "cd /workspace && git init"])
             assert exit_code == 0, "Should initialize Git repository"
-            
-            exit_code, output = container.exec_run("cd /workspace && git add .")
+
+            # Fix: Run through bash for cd &&
+            exit_code, output = container.exec_run(["bash", "-c", "cd /workspace && git add ."])
             assert exit_code == 0, "Should add files to Git"
-            
+
+            # Fix: Run through bash for cd &&
             exit_code, output = container.exec_run(
-                'cd /workspace && git commit -m "Initial commit"'
+                ["bash", "-c", 'cd /workspace && git commit -m "Initial commit"']
             )
             assert exit_code == 0, "Should commit files to Git"
             

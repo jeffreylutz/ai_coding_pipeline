@@ -110,7 +110,8 @@ class TestContainerStartup:
             
             # Test environment variables are set
             for key, expected_value in environment_vars.items():
-                exit_code, output = container.exec_run(f"echo ${key}")
+                # Fix: Use list format for proper shell variable expansion
+                exit_code, output = container.exec_run(["bash", "-c", f"echo ${key}"])
                 assert exit_code == 0, f"Should be able to access environment variable {key}"
                 actual_value = output.decode().strip()
                 assert actual_value == expected_value, f"Environment variable {key} should have correct value"
@@ -215,8 +216,9 @@ class TestContainerStartup:
     @settings(max_examples=3, deadline=45000)
     @given(
         port_mappings=st.dictionaries(
-            keys=st.sampled_from(['3000', '8000', '8080', '9000']),
-            values=st.integers(min_value=3000, max_value=9999),
+            # Fix: Use higher port numbers to avoid conflicts with commonly used ports
+            keys=st.sampled_from(['40000', '40001', '40002', '40003']),
+            values=st.integers(min_value=40000, max_value=49999),
             min_size=1,
             max_size=4
         )

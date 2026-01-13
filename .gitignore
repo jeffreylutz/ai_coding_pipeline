@@ -1,1 +1,4 @@
 *.log
+test-report*
+__pycache__
+.hypothesis

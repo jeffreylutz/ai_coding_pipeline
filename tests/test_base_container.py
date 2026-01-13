@@ -221,7 +221,12 @@ class TestBaseContainerSetup:
                 min_size=3,
                 max_size=10
             ),
-            values=st.text(min_size=1, max_size=50),
+            # Fix: Use printable ASCII characters to avoid null bytes and special characters
+            values=st.text(
+                alphabet=st.characters(whitelist_categories=("Ll", "Lu", "Nd"), min_codepoint=32, max_codepoint=126),
+                min_size=1,
+                max_size=50
+            ).filter(lambda x: '\x00' not in x),  # Explicitly filter null bytes
             min_size=1,
             max_size=5
         )
@@ -262,7 +267,8 @@ class TestBaseContainerSetup:
             
             # Test that environment variables are set
             for key, expected_value in safe_env_vars.items():
-                exit_code, output = container.exec_run(f"echo ${key}")
+                # Fix: Run through bash to expand environment variables
+                exit_code, output = container.exec_run(["bash", "-c", f"echo ${key}"])
                 assert exit_code == 0, f"Failed to read environment variable {key}"
                 actual_value = output.decode().strip()
                 assert actual_value == expected_value, f"Environment variable {key} mismatch"

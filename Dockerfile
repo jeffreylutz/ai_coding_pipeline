@@ -1641,9 +1641,11 @@ RUN cd /opt/pipelines/mai-ui && \
 # KnowNote dependencies
 RUN cd /opt/tools/knownote && \
     /home/developer/.venv/bin/pip install \
+    streamlit \
     langchain \
     chromadb \
     sentence-transformers \
+    tf-keras \
     pypdf \
     python-docx \
     markdown \

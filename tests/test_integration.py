@@ -175,7 +175,8 @@ class TestFullSystemIntegration:
                 assert exit_code == 0, f"Startup script for {project_name} should be executable"
                 
                 # Test startup script runs without errors
-                exit_code, output = container.exec_run(startup_script)
+                # Fix: Use list format for consistent script execution
+                exit_code, output = container.exec_run(["bash", "-c", startup_script])
                 assert exit_code == 0, f"Startup script for {project_name} should execute successfully"
                 
                 # Test configuration exists
@@ -188,7 +189,8 @@ class TestFullSystemIntegration:
                 
                 config_found = False
                 for pattern in config_patterns:
-                    exit_code, output = container.exec_run(f"ls {pattern} 2>/dev/null || true")
+                    # Fix: Use list format for proper shell operator handling
+                    exit_code, output = container.exec_run(["bash", "-c", f"ls {pattern} 2>/dev/null || true"])
                     if exit_code == 0 and len(output.decode().strip()) > 0:
                         config_found = True
                         break
@@ -234,7 +236,8 @@ class TestFullSystemIntegration:
                 assert exit_code == 0, f"Startup script for {tool_name} should be executable"
                 
                 # Test startup script runs without errors
-                exit_code, output = container.exec_run(startup_script)
+                # Fix: Use list format for consistent script execution
+                exit_code, output = container.exec_run(["bash", "-c", startup_script])
                 assert exit_code == 0, f"Startup script for {tool_name} should execute successfully"
                 
                 # Test configuration exists

@@ -225,7 +225,8 @@ class TestKiroInstallation:
             assert exit_code == 0, "Kiro configuration should be readable"
             
             # Test that developer user can access Kiro files
-            exit_code, output = container.exec_run("su - developer -c 'test -r /opt/pipelines/kiro/start-kiro.sh'")
+            # Fix: Container already runs as developer, no need for su command
+            exit_code, output = container.exec_run("test -r /opt/pipelines/kiro/start-kiro.sh")
             assert exit_code == 0, "Developer user should be able to access Kiro files"
             
         finally:
@@ -285,11 +286,13 @@ class TestKiroInstallation:
                     modified_config[key] = value
             
             # Write modified configuration
+            # Fix: Use base64 encoding to avoid shell escaping issues
             config_json = json.dumps(modified_config, indent=2)
-            safe_config = config_json.replace('"', '\\"').replace('`', '\\`')
-            
+            import base64
+            config_b64 = base64.b64encode(config_json.encode()).decode()
+
             exit_code, output = container.exec_run(
-                f'bash -c "echo \\"{safe_config}\\" > /tmp/kiro_config_test.json"'
+                ["bash", "-c", f"echo {config_b64} | base64 -d > /tmp/kiro_config_test.json"]
             )
             assert exit_code == 0, "Should be able to write modified configuration"
             
@@ -298,8 +301,9 @@ class TestKiroInstallation:
             assert exit_code == 0, "Modified configuration should still be valid JSON"
             
             # Test that startup script can handle the configuration
+            # Fix: Use bash to run script with environment variable
             exit_code, output = container.exec_run(
-                "KIRO_CONFIG=/tmp/kiro_config_test.json /opt/pipelines/kiro/start-kiro.sh"
+                ["bash", "-c", "KIRO_CONFIG=/tmp/kiro_config_test.json /opt/pipelines/kiro/start-kiro.sh"]
             )
             # Note: We expect this to work even with modified config since it's just a placeholder
             assert exit_code == 0, "Startup script should handle configuration variations"

@@ -306,8 +306,9 @@ class TestAdditionalToolsInstallation:
                     packages = ['requests', 'pyyaml']  # Basic packages
                 
                 for package in packages:
+                    # Fix: Run through bash to source venv and execute python
                     exit_code, output = container.exec_run(
-                        f"source /home/developer/.venv/bin/activate && python -c 'import {package}'"
+                        ["bash", "-c", f"source /home/developer/.venv/bin/activate && python -c 'import {package}'"]
                     )
                     assert exit_code == 0, f"Python package {package} should be available for {tool['name']}"
             
@@ -364,9 +365,10 @@ class TestAdditionalToolsInstallation:
             # Test that port environment variables are set
             for tool, port in port_mappings.items():
                 env_var = f"{tool.upper()}_PORT"
-                exit_code, output = container.exec_run(f"echo ${env_var}")
+                # Fix: Run through bash to expand environment variables
+                exit_code, output = container.exec_run(["bash", "-c", f"echo ${env_var}"])
                 assert exit_code == 0, f"Should be able to access port environment variable for {tool}"
-                
+
                 actual_port = output.decode().strip()
                 assert actual_port == str(port), f"Port environment variable for {tool} should have correct value"
             
@@ -443,9 +445,10 @@ class TestAdditionalToolsInstallation:
                 # Test that tool can write to its own workspace
                 exit_code, output = container.exec_run(f"touch {tool_workspace}/{tool['name']}-file")
                 assert exit_code == 0, f"Tool {tool['name']} should be able to write to its workspace"
-                
+
                 # Test that tool workspace is accessible by developer user
-                exit_code, output = container.exec_run(f"su - developer -c 'ls {tool_workspace}'")
+                # Fix: Container already runs as developer user, no need for su
+                exit_code, output = container.exec_run(f"ls {tool_workspace}")
                 assert exit_code == 0, f"Developer user should be able to access {tool['name']} workspace"
             
             # Test that tools don't interfere with each other's workspaces

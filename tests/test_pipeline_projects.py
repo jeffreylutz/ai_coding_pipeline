@@ -222,7 +222,8 @@ class TestPipelineProjectsInstallation:
             assert exit_code == 0, f"Should be able to create files in workspace from {project['name']} context"
             
             # Test that developer user can access project files
-            exit_code, output = container.exec_run(f"su - developer -c 'test -r {project['startup_script']}'")
+            # Fix: Container already runs as developer, no need for su command
+            exit_code, output = container.exec_run(f"test -r {project['startup_script']}")
             assert exit_code == 0, f"Developer user should be able to access {project['name']} files"
             
         finally:
@@ -254,16 +255,24 @@ class TestPipelineProjectsInstallation:
                 assert exit_code == 0, f"Python should be available for {project['name']}"
                 
                 # Test virtual environment
-                exit_code, output = container.exec_run("source /home/developer/.venv/bin/activate && python --version")
+                # Fix: Use list format for proper shell quoting
+                exit_code, output = container.exec_run(["bash", "-c", "source /home/developer/.venv/bin/activate && python --version"])
                 assert exit_code == 0, f"Python virtual environment should be accessible for {project['name']}"
                 
                 # Test common Python packages
-                common_packages = ["requests", "pyyaml", "click", "rich"]
-                for package in common_packages:
+                # Note: Package names may differ from import names (e.g., pyyaml -> yaml)
+                common_packages = [
+                    ("requests", "requests"),
+                    ("pyyaml", "yaml"),
+                    ("click", "click"),
+                    ("rich", "rich")
+                ]
+                for package_name, import_name in common_packages:
+                    # Fix: Use list format for proper shell quoting
                     exit_code, output = container.exec_run(
-                        f"source /home/developer/.venv/bin/activate && python -c 'import {package}'"
+                        ["bash", "-c", f"source /home/developer/.venv/bin/activate && python -c 'import {import_name}'"]
                     )
-                    assert exit_code == 0, f"Python package {package} should be available for {project['name']}"
+                    assert exit_code == 0, f"Python package {package_name} should be available for {project['name']}"
             
             # Test Node.js-based projects
             nodejs_projects = [p for p in self.pipeline_projects if p['type'] == 'nodejs']
@@ -290,7 +299,12 @@ class TestPipelineProjectsInstallation:
     @given(
         api_keys=st.dictionaries(
             keys=st.sampled_from(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_API_KEY']),
-            values=st.text(min_size=10, max_size=50).filter(lambda x: x.isalnum()),
+            # Fix: Generate alphanumeric text directly instead of filtering
+            values=st.text(
+                alphabet=st.characters(whitelist_categories=("Ll", "Lu", "Nd")),
+                min_size=10,
+                max_size=50
+            ),
             min_size=1,
             max_size=3
         )
@@ -321,14 +335,16 @@ class TestPipelineProjectsInstallation:
             
             # Test that API keys are accessible
             for key, value in api_keys.items():
-                exit_code, output = container.exec_run(f"echo ${key}")
+                # Fix: Use list format for proper shell variable expansion
+                exit_code, output = container.exec_run(["bash", "-c", f"echo ${key}"])
                 assert exit_code == 0, f"Should be able to access environment variable {key}"
                 actual_value = output.decode().strip()
                 assert actual_value == value, f"Environment variable {key} should have correct value"
-            
+
             # Test that projects can still start with API keys set
             for project in self.pipeline_projects[:3]:  # Test first 3 projects to save time
-                exit_code, output = container.exec_run(project['startup_script'])
+                # Fix: Use list format for proper shell execution
+                exit_code, output = container.exec_run(["bash", "-c", project['startup_script']])
                 assert exit_code == 0, f"Project {project['name']} should start successfully with API keys"
                 
         finally:

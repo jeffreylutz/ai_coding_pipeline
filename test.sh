@@ -116,35 +116,33 @@ build_container_if_needed() {
 # Function to run property-based tests
 run_property_tests() {
     print_status "Running property-based tests..."
-    
-    cd tests
-    
+
     # Run all property tests with appropriate settings
+    # Note: Run from project root so tests can find Dockerfile and docker-compose.yml
     python3 -m pytest \
-        test_base_container.py \
-        test_runtime_environment.py \
-        test_kiro_installation.py \
-        test_pipeline_projects.py \
-        test_additional_tools.py \
-        test_container_startup.py \
-        test_build_optimization.py \
-        test_documentation.py \
-        test_orchestration.py \
+        tests/test_base_container.py \
+        tests/test_runtime_environment.py \
+        tests/test_kiro_installation.py \
+        tests/test_pipeline_projects.py \
+        tests/test_additional_tools.py \
+        tests/test_container_startup.py \
+        tests/test_build_optimization.py \
+        tests/test_documentation.py \
+        tests/test_orchestration.py \
         -v \
         --tb=short \
         --maxfail=5 \
         --timeout=300
-    
+
     local test_result=$?
-    cd ..
-    
+
     if [ $test_result -eq 0 ]; then
         print_success "All property-based tests passed"
     else
         print_error "Some property-based tests failed"
         return 1
     fi
-    
+
     return 0
 }
 
@@ -154,7 +152,7 @@ run_integration_tests() {
     
     # Test container startup
     print_status "Testing container startup..."
-    docker run --name "$TEST_CONTAINER_NAME" -d "$IMAGE_NAME" > /dev/null
+    docker run --rm --name "$TEST_CONTAINER_NAME" -d "$IMAGE_NAME" > /dev/null
     
     # Wait for container to start
     sleep 5
@@ -215,7 +213,7 @@ run_performance_tests() {
     print_status "Testing container startup time..."
     local start_time=$(date +%s)
     
-    docker run --name "${TEST_CONTAINER_NAME}-perf" -d "$IMAGE_NAME" > /dev/null
+    docker run --rm --name "${TEST_CONTAINER_NAME}-perf" -d "$IMAGE_NAME" > /dev/null
     
     # Wait for container to be ready
     local ready=false
