@@ -61,7 +61,7 @@ init-project my-project mixed
 
 ## Included Pipeline Projects
 
-### 1. Kiro Autonomous Agent
+### 1. Kiro CLI
 - **Location**: `/opt/pipelines/kiro`
 - **Type**: Proprietary agent platform
 - **Features**: Autonomous operation, context maintenance, learning

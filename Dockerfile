@@ -214,33 +214,10 @@ RUN npm install -g \
     cross-env \
     dotenv-cli
 
-# Install Kiro Autonomous Agent
-RUN mkdir -p /opt/pipelines/kiro && \
-    cd /opt/pipelines/kiro && \
-    echo "Kiro Autonomous Agent installation placeholder" > README.md && \
-    echo "Visit https://kiro.dev/autonomous-agent/ for installation instructions" >> README.md
-
-# Create Kiro configuration directory
-RUN mkdir -p /opt/configs/kiro && \
-    cat > /opt/configs/kiro/config.json << 'EOF'
-{
-  "name": "kiro-autonomous-agent",
-  "version": "1.0.0",
-  "description": "Kiro Autonomous Agent Configuration",
-  "sandbox": {
-    "enabled": true,
-    "dockerfile_detection": true,
-    "environment": "containerized"
-  },
-  "autonomous_operation": {
-    "enabled": true,
-    "context_maintenance": true,
-    "learning": true
-  },
-  "workspace": "/workspace",
-  "logs": "/opt/logs/kiro"
-}
-EOF
+# Install Kiro CLI
+RUN wget https://desktop-release.q.us-east-1.amazonaws.com/latest/kiro-cli.deb \
+    && dpkg -i kiro-cli.deb \
+    && apt-get install -f
 
 # Create Kiro startup script
 RUN cat > /opt/pipelines/kiro/start-kiro.sh << 'EOF'

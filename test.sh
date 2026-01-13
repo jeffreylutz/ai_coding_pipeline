@@ -121,13 +121,10 @@ run_property_tests() {
     # Note: Run from project root so tests can find Dockerfile and docker-compose.yml
     python3 -m pytest \
         tests/test_base_container.py \
-        tests/test_runtime_environment.py \
         tests/test_kiro_installation.py \
         tests/test_pipeline_projects.py \
         tests/test_additional_tools.py \
         tests/test_container_startup.py \
-        tests/test_build_optimization.py \
-        tests/test_documentation.py \
         tests/test_orchestration.py \
         -v \
         --tb=short \

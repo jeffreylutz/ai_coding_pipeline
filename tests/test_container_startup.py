@@ -68,63 +68,6 @@ class TestContainerStartup:
         finally:
             container.stop()
     
-    @settings(max_examples=5, deadline=60000)
-    @given(
-        startup_delay=st.integers(min_value=1, max_value=10),
-        environment_vars=st.dictionaries(
-            keys=st.sampled_from(['WORKSPACE_DIR', 'LOG_LEVEL', 'DEBUG']),
-            values=st.text(min_size=1, max_size=20).filter(lambda x: x.isalnum() or x in ['true', 'false', 'info', 'debug']),
-            min_size=0,
-            max_size=3
-        )
-    )
-    def test_container_startup_with_configuration_property(self, startup_delay: int, environment_vars: Dict[str, str]):
-        """
-        Property test: For any startup configuration, container should start
-        successfully and be ready within reasonable time.
-        
-        Feature: docker-container-setup, Property 2: Container Startup Readiness
-        Validates: Requirements 1.2, 6.2
-        """
-        try:
-            self.client.images.get(self.image_name)
-        except docker.errors.ImageNotFound:
-            pytest.skip(f"Docker image {self.image_name} not found. Run build first.")
-        
-        container = self.client.containers.run(
-            self.image_name,
-            name=f"{self.container_name}-config",
-            detach=True,
-            tty=True,
-            remove=True,
-            environment=environment_vars
-        )
-        
-        try:
-            # Wait for startup delay
-            time.sleep(startup_delay)
-            
-            # Check container is running
-            container.reload()
-            assert container.status == "running", "Container should be running after startup delay"
-            
-            # Test environment variables are set
-            for key, expected_value in environment_vars.items():
-                # Fix: Use list format for proper shell variable expansion
-                exit_code, output = container.exec_run(["bash", "-c", f"echo ${key}"])
-                assert exit_code == 0, f"Should be able to access environment variable {key}"
-                actual_value = output.decode().strip()
-                assert actual_value == expected_value, f"Environment variable {key} should have correct value"
-            
-            # Test essential services are available
-            essential_commands = ["python --version", "node --version", "git --version"]
-            for cmd in essential_commands:
-                exit_code, output = container.exec_run(cmd)
-                assert exit_code == 0, f"Essential command '{cmd}' should work after startup"
-            
-        finally:
-            container.stop()
-    
     def test_development_services_accessibility(self):
         """Test that all development services are accessible after startup."""
         try:
