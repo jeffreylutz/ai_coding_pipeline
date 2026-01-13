@@ -13,7 +13,7 @@ ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
 # Create non-root user for development
-ARG USERNAME=developer
+ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
@@ -51,14 +51,179 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user with sudo privileges
-RUN groupadd --gid 1000 developer 2>/dev/null || groupmod -g 1000 developer 2>/dev/null || true \
-    && useradd --uid 1000 --gid 1000 -m developer 2>/dev/null || usermod -u 1000 -g 1000 developer 2>/dev/null || true \
+RUN groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/null || true \
+    && useradd --uid 1000 --gid 1000 -m ubuntu 2>/dev/null || usermod -u 1000 -g 1000 ubuntu 2>/dev/null || true \
     && apt-get update \
     && apt-get install -y sudo \
-    && echo developer ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/developer \
-    && chmod 0440 /etc/sudoers.d/developer \
+    && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
+    && chmod 0440 /etc/sudoers.d/ubuntu \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# Desktop Environment Setup - GNOME Desktop with NoVNC
+# =============================================================================
+
+# Install GNOME Desktop Environment
+# RUN apt-get update && apt-get install -y \
+#     # GNOME Desktop packages
+#     ubuntu-desktop-minimal \
+#     && apt-get clean \
+#     && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y \
+    # GNOME Desktop packages \
+    ubuntu-desktop-minimal \
+    gnome-shell \
+    gnome-terminal \
+    gnome-control-center \
+    gnome-tweaks \
+    nautilus \
+    # Display server \
+    xorg \
+    dbus-x11 \
+    x11-xserver-utils \
+    x11-utils \
+    # VNC server \
+    tigervnc-standalone-server \
+    tigervnc-common \
+    # Fonts and rendering \
+    fonts-liberation \
+    fonts-dejavu \
+    fonts-noto \
+    # Audio support \
+    pulseaudio \
+    # Additional utilities \
+    xdotool \
+    wmctrl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install NoVNC and dependencies
+RUN apt-get update && apt-get install -y \
+    python3-numpy \
+    novnc \
+    websockify \
+    net-tools \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure VNC for ubuntu user
+RUN mkdir -p /home/ubuntu/.vnc && \
+    echo "ubuntu" | vncpasswd -f > /home/ubuntu/.vnc/passwd && \
+    chmod 600 /home/ubuntu/.vnc/passwd && \
+    chown -R ubuntu:ubuntu /home/ubuntu/.vnc
+
+# Create VNC xstartup script for GNOME
+RUN cat > /home/ubuntu/.vnc/xstartup << 'EOF'
+#!/bin/bash
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+export XKL_XMODMAP_DISABLE=1
+export XDG_CURRENT_DESKTOP="GNOME"
+export XDG_SESSION_TYPE="x11"
+export GDK_BACKEND="x11"
+
+# Start dbus
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    eval $(dbus-launch --sh-syntax)
+fi
+
+# Start GNOME session
+exec gnome-session
+EOF
+
+RUN chmod +x /home/ubuntu/.vnc/xstartup && \
+    chown ubuntu:ubuntu /home/ubuntu/.vnc/xstartup
+
+# Create VNC configuration file
+RUN cat > /home/ubuntu/.vnc/config << 'EOF'
+# VNC Configuration
+geometry=1920x1080
+dpi=96
+depth=24
+localhost=no
+alwaysshared
+EOF
+
+RUN chown ubuntu:ubuntu /home/ubuntu/.vnc/config
+
+# Create startup script for VNC and NoVNC
+RUN cat > /usr/local/bin/start-vnc.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "Starting VNC server and NoVNC web interface..."
+
+# Kill any existing VNC servers
+vncserver -kill :1 2>/dev/null || true
+pkill -9 Xtigervnc 2>/dev/null || true
+pkill -9 websockify 2>/dev/null || true
+
+# Wait a moment for cleanup
+sleep 2
+
+# Set display
+export DISPLAY=:1
+export USER=ubuntu
+export HOME=/home/ubuntu
+
+# Start VNC server
+echo "Starting VNC server on display :1..."
+su - ubuntu -c "vncserver :1 -geometry 1920x1080 -depth 24 -localhost no"
+
+# Wait for VNC server to start
+sleep 3
+
+# Start NoVNC websocket proxy
+echo "Starting NoVNC on port 6080..."
+websockify --web=/usr/share/novnc 6080 localhost:5901 &
+
+echo "VNC and NoVNC started successfully!"
+echo "VNC server running on display :1 (port 5901)"
+echo "NoVNC web interface: http://localhost:6080/vnc.html"
+echo "VNC password: ubuntu"
+echo ""
+EOF
+
+RUN chmod +x /usr/local/bin/start-vnc.sh
+
+# Create desktop environment check script
+RUN cat > /usr/local/bin/desktop-status.sh << 'EOF'
+#!/bin/bash
+
+echo "=== Desktop Environment Status ==="
+echo ""
+
+# Check VNC server
+if pgrep -x "Xtigervnc" > /dev/null; then
+    echo "✓ VNC Server: Running"
+    echo "  Display: :1 (port 5901)"
+else
+    echo "✗ VNC Server: Not running"
+fi
+
+# Check NoVNC
+if pgrep -f "websockify.*6080" > /dev/null; then
+    echo "✓ NoVNC Web Interface: Running"
+    echo "  URL: http://localhost:6080/vnc.html"
+else
+    echo "✗ NoVNC Web Interface: Not running"
+fi
+
+# Check GNOME
+if pgrep -x "gnome-session" > /dev/null; then
+    echo "✓ GNOME Session: Running"
+else
+    echo "✗ GNOME Session: Not running"
+fi
+
+echo ""
+echo "To start desktop environment: start-vnc.sh"
+echo "To stop VNC: vncserver -kill :1"
+EOF
+
+RUN chmod +x /usr/local/bin/desktop-status.sh
 
 # =============================================================================
 # Stage 2: Runtime Environments
@@ -167,7 +332,7 @@ RUN apt-get update && apt-get install -y \
 # Install oh-my-zsh for enhanced shell experience
 RUN sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
 
-# Configure shell enhancements for developer user (skip for now to avoid user issues)
+# Configure shell enhancements for ubuntu user (skip for now to avoid user issues)
 # This will be configured later in the development_enhanced stage
 
 # Install additional Python packages for agentic coding (skip for now, will be done in development_enhanced stage)
@@ -315,7 +480,7 @@ mkdir -p /opt/logs/auto-claude
 mkdir -p /tmp/auto-claude
 
 # Activate Python virtual environment
-source /home/developer/.venv/bin/activate
+source /home/ubuntu/.venv/bin/activate
 
 # Check API keys
 if [ -z "$ANTHROPIC_API_KEY" ]; then
@@ -605,7 +770,7 @@ mkdir -p /opt/logs/automaker
 mkdir -p /workspace/automaker-projects
 
 # Activate Python virtual environment
-source /home/developer/.venv/bin/activate
+source /home/ubuntu/.venv/bin/activate
 
 # Check Docker availability
 if ! command -v docker &> /dev/null; then
@@ -809,7 +974,7 @@ mkdir -p /opt/logs/infiagent
 mkdir -p /workspace/infiagent-sessions
 
 # Activate Python virtual environment
-source /home/developer/.venv/bin/activate
+source /home/ubuntu/.venv/bin/activate
 
 # Check system resources
 echo "System Resources:"
@@ -985,7 +1150,7 @@ mkdir -p /tmp/mai-ui
 mkdir -p /workspace/mai-ui-checkpoints
 
 # Activate Python virtual environment
-source /home/developer/.venv/bin/activate
+source /home/ubuntu/.venv/bin/activate
 
 # Check GPU availability
 if command -v nvidia-smi &> /dev/null; then
@@ -1445,7 +1610,7 @@ EOF
 RUN cat > /opt/tools/knownote/start-knownote.sh << 'EOF'
 #!/bin/bash
 echo "Starting KnowNote - Local-first NotebookLM alternative..."
-source /home/developer/.venv/bin/activate
+source /home/ubuntu/.venv/bin/activate
 mkdir -p /workspace/knownote-docs /workspace/knownote-embeddings
 echo "KnowNote configured for local-first operation"
 echo "Features: Private LLMs, Full control, No Docker required"
@@ -1461,7 +1626,7 @@ EOF
 RUN cat > /opt/tools/opentinker/start-opentinker.sh << 'EOF'
 #!/bin/bash
 echo "Starting OpenTinker - Agentic RL as a Service..."
-source /home/developer/.venv/bin/activate
+source /home/ubuntu/.venv/bin/activate
 echo "Democratizing Agentic Reinforcement Learning"
 echo "Supported algorithms: PPO, A2C, DQN, SAC, TD3"
 EOF
@@ -1476,7 +1641,7 @@ EOF
 RUN cat > /opt/tools/claude-transcripts/start-claude-transcripts.sh << 'EOF'
 #!/bin/bash
 echo "Starting Claude Code Transcripts tools..."
-source /home/developer/.venv/bin/activate
+source /home/ubuntu/.venv/bin/activate
 mkdir -p /workspace/claude-transcripts
 echo "Tools for parsing and analyzing Claude code transcripts"
 EOF
@@ -1507,7 +1672,7 @@ RUN chmod -R 755 /opt/pipelines /opt/tools /opt/configs && \
 FROM base_integration AS development_enhanced
 
 # Re-declare ARG variables for this stage
-ARG USERNAME=developer
+ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
@@ -1517,22 +1682,22 @@ RUN mkdir -p /opt/pipelines \
     && mkdir -p /opt/configs \
     && mkdir -p /workspace
 
-# Ensure developer user exists and create Python virtual environment
+# Ensure ubuntu user exists and create Python virtual environment
 USER root
-RUN groupadd --gid 1000 developer 2>/dev/null || groupmod -g 1000 developer 2>/dev/null || true
-RUN useradd --uid 1000 --gid 1000 -m developer 2>/dev/null || usermod -u 1000 -g 1000 developer 2>/dev/null || true
-RUN echo developer ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/developer && chmod 0440 /etc/sudoers.d/developer
-RUN chown -R developer:developer /opt /workspace /home/developer 2>/dev/null || true
+RUN groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/null || true
+RUN useradd --uid 1000 --gid 1000 -m ubuntu 2>/dev/null || usermod -u 1000 -g 1000 ubuntu 2>/dev/null || true
+RUN echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu && chmod 0440 /etc/sudoers.d/ubuntu
+RUN chown -R ubuntu:ubuntu /opt /workspace /home/ubuntu 2>/dev/null || true
 
 # Create Python virtual environment for global tools as root, then change ownership
-WORKDIR /home/developer
-RUN python -m venv /home/developer/.venv \
-    && echo "source /home/developer/.venv/bin/activate" >> /home/developer/.bashrc \
-    && chown -R developer:developer /home/developer/.venv /home/developer/.bashrc 2>/dev/null || true
+WORKDIR /home/ubuntu
+RUN python -m venv /home/ubuntu/.venv \
+    && echo "source /home/ubuntu/.venv/bin/activate" >> /home/ubuntu/.bashrc \
+    && chown -R ubuntu:ubuntu /home/ubuntu/.venv /home/ubuntu/.bashrc 2>/dev/null || true
 
 # Install common Python packages as root, then change ownership
-RUN /home/developer/.venv/bin/pip install --upgrade pip setuptools wheel \
-    && /home/developer/.venv/bin/pip install \
+RUN /home/ubuntu/.venv/bin/pip install --upgrade pip setuptools wheel \
+    && /home/ubuntu/.venv/bin/pip install \
     requests \
     pyyaml \
     click \
@@ -1560,12 +1725,12 @@ RUN /home/developer/.venv/bin/pip install --upgrade pip setuptools wheel \
     transformers \
     openai \
     anthropic \
-    && chown -R developer:developer /home/developer/.venv 2>/dev/null || true
+    && chown -R ubuntu:ubuntu /home/ubuntu/.venv 2>/dev/null || true
 
 # Install Python dependencies for pipeline projects
 # Auto-Claude Framework dependencies
 RUN cd /opt/pipelines/auto-claude && \
-    /home/developer/.venv/bin/pip install \
+    /home/ubuntu/.venv/bin/pip install \
     langchain \
     langchain-anthropic \
     langchain-openai \
@@ -1577,7 +1742,7 @@ RUN cd /opt/pipelines/auto-claude && \
 
 # Automaker dependencies
 RUN cd /opt/pipelines/automaker && \
-    /home/developer/.venv/bin/pip install \
+    /home/ubuntu/.venv/bin/pip install \
     google-generativeai \
     langchain-google-genai \
     docker \
@@ -1589,7 +1754,7 @@ RUN cd /opt/pipelines/automaker && \
 
 # InfiAgent dependencies
 RUN cd /opt/pipelines/infiagent && \
-    /home/developer/.venv/bin/pip install \
+    /home/ubuntu/.venv/bin/pip install \
     langchain-openai \
     langchain-anthropic \
     aiofiles \
@@ -1601,7 +1766,7 @@ RUN cd /opt/pipelines/infiagent && \
 
 # MAI-UI dependencies
 RUN cd /opt/pipelines/mai-ui && \
-    /home/developer/.venv/bin/pip install \
+    /home/ubuntu/.venv/bin/pip install \
     torchvision \
     accelerate \
     bitsandbytes \
@@ -1617,7 +1782,7 @@ RUN cd /opt/pipelines/mai-ui && \
 # Additional tools dependencies
 # KnowNote dependencies
 RUN cd /opt/tools/knownote && \
-    /home/developer/.venv/bin/pip install \
+    /home/ubuntu/.venv/bin/pip install \
     streamlit \
     langchain \
     chromadb \
@@ -1630,7 +1795,7 @@ RUN cd /opt/tools/knownote && \
 
 # OpenTinker dependencies
 RUN cd /opt/tools/opentinker && \
-    /home/developer/.venv/bin/pip install \
+    /home/ubuntu/.venv/bin/pip install \
     gymnasium \
     stable-baselines3 \
     ray[rllib] \
@@ -1641,11 +1806,11 @@ RUN cd /opt/tools/opentinker && \
 
 # Claude-transcripts dependencies
 RUN cd /opt/tools/claude-transcripts && \
-    /home/developer/.venv/bin/pip install \
+    /home/ubuntu/.venv/bin/pip install \
     jinja2
 
 # Clean up pip cache after all Python package installations
-RUN /home/developer/.venv/bin/pip cache purge
+RUN /home/ubuntu/.venv/bin/pip cache purge
 
 # Install common Node.js packages globally
 RUN npm install -g \
@@ -1674,15 +1839,17 @@ WORKDIR /workspace
 
 # Expose common development ports
 EXPOSE 3000 8000 8080 9000
+# Expose VNC and NoVNC ports
+EXPOSE 5901 6080
 
-# Ensure developer user exists in final stage
+# Ensure ubuntu user exists in final stage
 USER root
 RUN if id ubuntu >/dev/null 2>&1; then userdel -r ubuntu 2>/dev/null || true; fi \
-    && groupadd --gid 1000 developer 2>/dev/null || groupmod -g 1000 developer 2>/dev/null || true \
-    && useradd --uid 1000 --gid 1000 -m developer 2>/dev/null || usermod -u 1000 -g 1000 developer 2>/dev/null || true \
-    && echo developer ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/developer \
-    && chmod 0440 /etc/sudoers.d/developer \
-    && chown -R developer:developer /opt /workspace /home/developer 2>/dev/null || true
+    && groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/null || true \
+    && useradd --uid 1000 --gid 1000 -m ubuntu 2>/dev/null || usermod -u 1000 -g 1000 ubuntu 2>/dev/null || true \
+    && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
+    && chmod 0440 /etc/sudoers.d/ubuntu \
+    && chown -R ubuntu:ubuntu /opt /workspace /home/ubuntu 2>/dev/null || true
 
 # Create startup script
 COPY scripts/base-container-setup.sh /usr/local/bin/
@@ -1690,9 +1857,9 @@ RUN chmod +x /usr/local/bin/base-container-setup.sh && \
     /usr/local/bin/base-container-setup.sh
 
 # Fix: Create symlinks for agentic commands in system path
-RUN if [ -f /home/developer/.local/bin/agentic-status ]; then \
-        ln -s /home/developer/.local/bin/agentic-status /usr/local/bin/agentic-status && \
-        ln -s /home/developer/.local/bin/init-project /usr/local/bin/init-project && \
+RUN if [ -f /home/ubuntu/.local/bin/agentic-status ]; then \
+        ln -s /home/ubuntu/.local/bin/agentic-status /usr/local/bin/agentic-status && \
+        ln -s /home/ubuntu/.local/bin/init-project /usr/local/bin/init-project && \
         chmod +x /usr/local/bin/agentic-status && \
         chmod +x /usr/local/bin/init-project; \
     fi
@@ -1701,7 +1868,7 @@ RUN if [ -f /home/developer/.local/bin/agentic-status ]; then \
 RUN for script in /opt/pipelines/*/start-*.sh /opt/tools/*/start-*.sh; do \
         if [ -f "$script" ]; then \
             # Make venv activation conditional \
-            sed -i 's|^source /home/developer/.venv/bin/activate|if [ -f /home/developer/.venv/bin/activate ]; then source /home/developer/.venv/bin/activate; else echo "Warning: venv not found, using system Python"; fi|g' "$script" && \
+            sed -i 's|^source /home/ubuntu/.venv/bin/activate|if [ -f /home/ubuntu/.venv/bin/activate ]; then source /home/ubuntu/.venv/bin/activate; else echo "Warning: venv not found, using system Python"; fi|g' "$script" && \
             # Ensure script exits 0 \
             if ! grep -q "^exit 0" "$script"; then \
                 echo "" >> "$script" && \
@@ -1710,13 +1877,13 @@ RUN for script in /opt/pipelines/*/start-*.sh /opt/tools/*/start-*.sh; do \
         fi \
     done
 
-# Ensure Git is configured for developer user
-RUN sudo -u developer git config --global init.defaultBranch main && \
-    sudo -u developer git config --global user.name "Agentic Developer" && \
-    sudo -u developer git config --global user.email "developer@agentic-coding.local" && \
-    sudo -u developer git config --global core.editor "vim" && \
-    sudo -u developer git config --global pull.rebase false && \
-    chown developer:developer /home/developer/.gitconfig 2>/dev/null || true
+# Ensure Git is configured for ubuntu user
+RUN sudo -u ubuntu git config --global init.defaultBranch main && \
+    sudo -u ubuntu git config --global user.name "Agentic ubuntu" && \
+    sudo -u ubuntu git config --global user.email "ubuntu@agentic-coding.local" && \
+    sudo -u ubuntu git config --global core.editor "vim" && \
+    sudo -u ubuntu git config --global pull.rebase false && \
+    chown ubuntu:ubuntu /home/ubuntu/.gitconfig 2>/dev/null || true
 
 RUN cat > /usr/local/bin/start-container.sh << 'EOF'
 #!/bin/bash
@@ -1759,8 +1926,8 @@ echo "Docker version: $(docker --version 2>/dev/null || echo 'Docker not availab
 # Create container readiness indicator
 touch /workspace/.container-ready
 
-# Switch to developer user and start bash
-echo "Switching to developer user..."
+# Switch to ubuntu user and start bash
+echo "Switching to ubuntu user..."
 echo "Available pipeline projects:"
 ls -1 /opt/pipelines/
 echo ""
@@ -1770,14 +1937,20 @@ echo ""
 echo "Use 'agentic-status' to check system status"
 echo "Use 'init-project <name> [type]' to create new projects"
 echo ""
+echo "Desktop Environment:"
+echo "  Start desktop: start-vnc.sh"
+echo "  Desktop status: desktop-status.sh"
+echo "  NoVNC URL: http://localhost:6080/vnc.html"
+echo "  VNC password: ubuntu"
+echo ""
 echo "Container is ready!"
-exec su - developer -c "cd /workspace && bash"
+exec su - ubuntu -c "cd /workspace && bash"
 EOF
 
 RUN chmod +x /usr/local/bin/start-container.sh
 
-# Switch back to developer user
-USER developer
+# Switch back to ubuntu user
+USER ubuntu
 
 # Set default command
 CMD ["/usr/local/bin/start-container.sh"]

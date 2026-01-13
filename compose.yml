@@ -15,6 +15,8 @@ services:
       - "8000:8000"   # Python/Django development
       - "8080:8080"   # Alternative web port
       - "9000:9000"   # Additional service port
+      - "5901:5901"   # VNC server
+      - "6080:6080"   # NoVNC web interface
     
     # Volume mounts for persistent development work
     volumes:
@@ -30,6 +32,9 @@ services:
       - PIPELINES_DIR=/opt/pipelines
       - TOOLS_DIR=/opt/tools
       - CONFIGS_DIR=/opt/configs
+      - DISPLAY=:1
+      - VNC_RESOLUTION=1920x1080
+      - VNC_DEPTH=24
     
     # Working directory
     working_dir: /workspace
