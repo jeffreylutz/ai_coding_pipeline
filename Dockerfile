@@ -67,17 +67,17 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # =============================================================================
-# Desktop Environment Setup - GNOME Desktop with NoVNC
+# Desktop Environment Setup - IceWM Desktop with NoVNC
 # =============================================================================
 
-# Install GNOME Desktop, NoVNC, and all dependencies in one layer
+# Install IceWM Desktop, NoVNC, and all dependencies in one layer
+# Using IceWM instead of GNOME for container compatibility (no systemd required)
 RUN apt-get update && apt-get install -y \
-    # GNOME Desktop packages \
-    ubuntu-desktop-minimal \
-    gnome-shell \
+    # Window manager and desktop components \
+    icewm \
+    icewm-common \
+    xterm \
     gnome-terminal \
-    gnome-control-center \
-    gnome-tweaks \
     nautilus \
     # Display server \
     xorg \
@@ -100,6 +100,7 @@ RUN apt-get update && apt-get install -y \
     # Additional utilities \
     xdotool \
     wmctrl \
+    menu \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -109,23 +110,30 @@ RUN mkdir -p /home/ubuntu/.vnc && \
     chmod 600 /home/ubuntu/.vnc/passwd && \
     chown -R ubuntu:ubuntu /home/ubuntu/.vnc
 
-# Create VNC xstartup script for GNOME
+# Create VNC xstartup script for IceWM
 RUN cat > /home/ubuntu/.vnc/xstartup << 'EOF'
 #!/bin/bash
+# Lightweight VNC session with IceWM (container-friendly, no systemd required)
+
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
-export XKL_XMODMAP_DISABLE=1
-export XDG_CURRENT_DESKTOP="GNOME"
-export XDG_SESSION_TYPE="x11"
-export GDK_BACKEND="x11"
 
-# Start dbus
+# Start dbus session
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval $(dbus-launch --sh-syntax)
 fi
 
-# Start GNOME session
-exec gnome-session
+# Set background color
+xsetroot -solid darkblue &
+
+# Start file manager (optional, in background)
+nautilus --no-desktop &
+
+# Start terminal
+gnome-terminal &
+
+# Start IceWM window manager (lightweight and container-friendly)
+exec icewm-session
 EOF
 
 RUN chmod +x /home/ubuntu/.vnc/xstartup && \
@@ -206,11 +214,11 @@ else
     echo "✗ NoVNC Web Interface: Not running"
 fi
 
-# Check GNOME
-if pgrep -x "gnome-session" > /dev/null; then
-    echo "✓ GNOME Session: Running"
+# Check IceWM
+if pgrep -x "icewm" > /dev/null || pgrep -x "icewm-session" > /dev/null; then
+    echo "✓ IceWM Window Manager: Running"
 else
-    echo "✗ GNOME Session: Not running"
+    echo "✗ IceWM Window Manager: Not running"
 fi
 
 echo ""
@@ -1828,7 +1836,7 @@ RUN chown -R ubuntu:ubuntu /opt /workspace /home/ubuntu 2>/dev/null || true
 # Create startup script
 COPY scripts/base-container-setup.sh /usr/local/bin/base-container-setup.sh
 RUN chmod +x /usr/local/bin/base-container-setup.sh \
-    && /usr/local/bin/base-container-setup.sh
+    && /usr/local/bin/base-container-setup.sh ubuntu
 
 # Fix: Create symlinks for agentic commands in system path
 RUN if [ -f /home/ubuntu/.local/bin/agentic-status ]; then \
@@ -1897,10 +1905,31 @@ echo "pip version: $(pip --version)"
 echo "Git version: $(git --version)"
 echo "Docker version: $(docker --version 2>/dev/null || echo 'Docker not available')"
 
+# Auto-start VNC desktop environment
+echo ""
+echo "Starting VNC desktop environment..."
+if su - ubuntu -c "vncserver :1 -geometry 1920x1080 -depth 24 -localhost no" 2>/dev/null; then
+    echo "✓ VNC server started on display :1 (port 5901)"
+
+    # Wait for VNC to fully start
+    sleep 2
+
+    # Start NoVNC websocket proxy
+    if su - ubuntu -c "websockify --web=/usr/share/novnc --daemon 6080 localhost:5901" 2>/dev/null; then
+        echo "✓ NoVNC web interface started on port 6080"
+    else
+        echo "⚠ NoVNC failed to start, trying alternative method..."
+        nohup websockify --web=/usr/share/novnc 6080 localhost:5901 > /dev/null 2>&1 &
+    fi
+else
+    echo "⚠ VNC auto-start failed. You can start manually with: start-vnc.sh"
+fi
+
 # Create container readiness indicator
 touch /workspace/.container-ready
 
 # Switch to ubuntu user and start bash
+echo ""
 echo "Switching to ubuntu user..."
 echo "Available pipeline projects:"
 ls -1 /opt/pipelines/
@@ -1912,10 +1941,10 @@ echo "Use 'agentic-status' to check system status"
 echo "Use 'init-project <name> [type]' to create new projects"
 echo ""
 echo "Desktop Environment:"
-echo "  Start desktop: start-vnc.sh"
+echo "  VNC Server: Running on port 5901"
+echo "  NoVNC Web: http://localhost:6080/vnc.html"
+echo "  VNC Password: ubuntu"
 echo "  Desktop status: desktop-status.sh"
-echo "  NoVNC URL: http://localhost:6080/vnc.html"
-echo "  VNC password: ubuntu"
 echo ""
 echo "Container is ready!"
 exec su - ubuntu -c "cd /workspace && bash"
