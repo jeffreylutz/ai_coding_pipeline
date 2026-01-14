@@ -151,45 +151,125 @@ EOF
 
 RUN chown ubuntu:ubuntu /home/ubuntu/.vnc/config
 
-# Create startup script for VNC and NoVNC
+# Create startup script for VNC and NoVNC (now uses Supervisor)
 RUN cat > /usr/local/bin/start-vnc.sh << 'EOF'
 #!/bin/bash
-set -e
+# Start VNC desktop services via Supervisor
 
-echo "Starting VNC server and NoVNC web interface..."
+echo "Starting VNC desktop services via Supervisor..."
 
-# Kill any existing VNC servers
-vncserver -kill :1 2>/dev/null || true
-pkill -9 Xtigervnc 2>/dev/null || true
-pkill -9 websockify 2>/dev/null || true
+# Check if supervisor is running
+if ! pgrep -x supervisord > /dev/null; then
+    echo "Starting Supervisor..."
+    /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+    sleep 2
+fi
 
-# Wait a moment for cleanup
+# Start VNC and NoVNC services
+echo "Starting VNC server..."
+supervisorctl start vncserver
+
+echo "Starting NoVNC web interface..."
+supervisorctl start novnc
+
+# Wait for services to start
 sleep 2
 
-# Set display
-export DISPLAY=:1
-export USER=ubuntu
-export HOME=/home/ubuntu
+# Check status
+echo ""
+supervisorctl status vncserver novnc
 
-# Start VNC server
-echo "Starting VNC server on display :1..."
-su - ubuntu -c "vncserver :1 -geometry 1920x1080 -depth 24 -localhost no"
-
-# Wait for VNC server to start
-sleep 3
-
-# Start NoVNC websocket proxy
-echo "Starting NoVNC on port 6080..."
-websockify --web=/usr/share/novnc 6080 localhost:5901 &
-
-echo "VNC and NoVNC started successfully!"
-echo "VNC server running on display :1 (port 5901)"
+echo ""
+echo "Desktop services started!"
+echo "VNC server: Port 5901"
 echo "NoVNC web interface: http://localhost:6080/vnc.html"
 echo "VNC password: ubuntu"
 echo ""
+echo "To check status: desktop-status.sh"
+echo "To manage services: supervisorctl status|start|stop|restart <service>"
 EOF
 
 RUN chmod +x /usr/local/bin/start-vnc.sh
+
+# Create stop script for VNC and NoVNC
+RUN cat > /usr/local/bin/stop-vnc.sh << 'EOF'
+#!/bin/bash
+# Stop VNC desktop services via Supervisor
+
+echo "Stopping VNC desktop services..."
+
+# Stop NoVNC first
+supervisorctl stop novnc 2>/dev/null || echo "NoVNC not running"
+
+# Stop VNC server
+supervisorctl stop vncserver 2>/dev/null || echo "VNC server not running"
+
+# Check status
+echo ""
+supervisorctl status vncserver novnc
+
+echo ""
+echo "Desktop services stopped!"
+echo "To restart: start-vnc.sh"
+EOF
+
+RUN chmod +x /usr/local/bin/stop-vnc.sh
+
+# Create supervisor management helper
+RUN cat > /usr/local/bin/vnc-ctl << 'EOF'
+#!/bin/bash
+# VNC Service Control Helper
+
+case "$1" in
+    status)
+        echo "=== VNC Desktop Services Status ==="
+        supervisorctl status vncserver novnc
+        echo ""
+        desktop-status.sh
+        ;;
+    start)
+        start-vnc.sh
+        ;;
+    stop)
+        stop-vnc.sh
+        ;;
+    restart)
+        echo "Restarting VNC desktop services..."
+        supervisorctl restart vncserver novnc
+        sleep 2
+        supervisorctl status vncserver novnc
+        ;;
+    logs)
+        service="${2:-vncserver}"
+        if [ "$service" = "vncserver" ]; then
+            echo "=== VNC Server Logs ==="
+            tail -50 /var/log/supervisor/vncserver.log
+        elif [ "$service" = "novnc" ]; then
+            echo "=== NoVNC Logs ==="
+            tail -50 /var/log/supervisor/novnc.log
+        else
+            echo "Unknown service: $service"
+            echo "Valid services: vncserver, novnc"
+            exit 1
+        fi
+        ;;
+    *)
+        echo "VNC Service Control"
+        echo "Usage: vnc-ctl {status|start|stop|restart|logs [vncserver|novnc]}"
+        echo ""
+        echo "Examples:"
+        echo "  vnc-ctl status          - Show service status"
+        echo "  vnc-ctl start           - Start VNC services"
+        echo "  vnc-ctl stop            - Stop VNC services"
+        echo "  vnc-ctl restart         - Restart VNC services"
+        echo "  vnc-ctl logs vncserver  - Show VNC server logs"
+        echo "  vnc-ctl logs novnc      - Show NoVNC logs"
+        exit 1
+        ;;
+esac
+EOF
+
+RUN chmod +x /usr/local/bin/vnc-ctl
 
 # Create desktop environment check script
 RUN cat > /usr/local/bin/desktop-status.sh << 'EOF'
@@ -198,8 +278,8 @@ RUN cat > /usr/local/bin/desktop-status.sh << 'EOF'
 echo "=== Desktop Environment Status ==="
 echo ""
 
-# Check VNC server
-if pgrep -x "Xtigervnc" > /dev/null; then
+# Check VNC server (looks for both Xtigervnc and Xvnc)
+if pgrep -x "Xtigervnc" > /dev/null || pgrep -x "Xvnc" > /dev/null; then
     echo "✓ VNC Server: Running"
     echo "  Display: :1 (port 5901)"
 else
@@ -227,6 +307,109 @@ echo "To stop VNC: vncserver -kill :1"
 EOF
 
 RUN chmod +x /usr/local/bin/desktop-status.sh
+
+# Configure Supervisor to manage VNC and NoVNC services
+RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d
+
+# Create supervisor configuration for VNC server
+RUN cat > /etc/supervisor/conf.d/vncserver.conf << 'EOF'
+[program:vncserver]
+command=/usr/local/bin/vncserver-supervisor.sh
+user=ubuntu
+autostart=true
+autorestart=true
+startsecs=5
+startretries=3
+stdout_logfile=/var/log/supervisor/vncserver.log
+stderr_logfile=/var/log/supervisor/vncserver.err
+priority=10
+EOF
+
+# Create supervisor configuration for NoVNC
+RUN cat > /etc/supervisor/conf.d/novnc.conf << 'EOF'
+[program:novnc]
+command=/usr/bin/websockify --web=/usr/share/novnc 6080 localhost:5901
+user=ubuntu
+autostart=true
+autorestart=true
+startsecs=5
+startretries=3
+stdout_logfile=/var/log/supervisor/novnc.log
+stderr_logfile=/var/log/supervisor/novnc.err
+priority=20
+depends_on=vncserver
+EOF
+
+# Create VNC startup wrapper script for supervisor
+RUN cat > /usr/local/bin/vncserver-supervisor.sh << 'EOF'
+#!/bin/bash
+# VNC Server startup script for Supervisor
+set -e
+
+# Clean up any stale VNC locks
+rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 2>/dev/null || true
+
+# Kill any existing VNC servers
+vncserver -kill :1 2>/dev/null || true
+sleep 1
+
+# Export environment variables
+export USER=ubuntu
+export HOME=/home/ubuntu
+export DISPLAY=:1
+
+# Start Xvnc in background
+/usr/bin/Xvnc :1 \
+    -geometry 1920x1080 \
+    -depth 24 \
+    -dpi 96 \
+    -rfbport 5901 \
+    -SecurityTypes VncAuth,TLSVnc \
+    -PasswordFile /home/ubuntu/.vnc/passwd \
+    -desktop "Agentic Coding Desktop" \
+    -localhost no \
+    -AlwaysShared \
+    -NeverShared=0 &
+
+XVNC_PID=$!
+
+# Wait for X server to be ready
+sleep 2
+
+# Execute xstartup script to start the desktop environment
+DISPLAY=:1 /home/ubuntu/.vnc/xstartup &
+
+# Wait for Xvnc process (this keeps supervisor happy)
+wait $XVNC_PID
+EOF
+
+RUN chmod +x /usr/local/bin/vncserver-supervisor.sh
+
+# Create main supervisor configuration
+RUN cat > /etc/supervisor/supervisord.conf << 'EOF'
+[supervisord]
+nodaemon=true
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+childlogdir=/var/log/supervisor
+loglevel=info
+
+[unix_http_server]
+file=/var/run/supervisor.sock
+chmod=0770
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisorctl]
+serverurl=unix:///var/run/supervisor.sock
+
+[include]
+files = /etc/supervisor/conf.d/*.conf
+EOF
+
+# Add ubuntu user to root group so they can access supervisor socket
+RUN usermod -a -G root ubuntu
 
 # =============================================================================
 # Stage 2: Runtime Environments
@@ -1905,24 +2088,37 @@ echo "pip version: $(pip --version)"
 echo "Git version: $(git --version)"
 echo "Docker version: $(docker --version 2>/dev/null || echo 'Docker not available')"
 
-# Auto-start VNC desktop environment
+# Start Supervisor to manage VNC and NoVNC services
 echo ""
-echo "Starting VNC desktop environment..."
-if su - ubuntu -c "vncserver :1 -geometry 1920x1080 -depth 24 -localhost no" 2>/dev/null; then
-    echo "✓ VNC server started on display :1 (port 5901)"
+echo "Starting Supervisor to manage desktop services..."
+/usr/bin/supervisord -c /etc/supervisor/supervisord.conf &
+SUPERVISOR_PID=$!
 
-    # Wait for VNC to fully start
-    sleep 2
+# Wait for supervisor to start
+sleep 2
 
-    # Start NoVNC websocket proxy
-    if su - ubuntu -c "websockify --web=/usr/share/novnc --daemon 6080 localhost:5901" 2>/dev/null; then
+# Check if supervisor is running
+if kill -0 $SUPERVISOR_PID 2>/dev/null; then
+    echo "✓ Supervisor started (PID: $SUPERVISOR_PID)"
+
+    # Wait for VNC and NoVNC to start (supervisor will auto-start them)
+    echo "Waiting for desktop services to initialize..."
+    sleep 3
+
+    # Check service status
+    if pgrep -x "Xvnc" > /dev/null 2>&1; then
+        echo "✓ VNC server started on display :1 (port 5901)"
+    else
+        echo "⚠ VNC server starting... (check logs: /var/log/supervisor/vncserver.log)"
+    fi
+
+    if pgrep -f "websockify.*6080" > /dev/null 2>&1; then
         echo "✓ NoVNC web interface started on port 6080"
     else
-        echo "⚠ NoVNC failed to start, trying alternative method..."
-        nohup websockify --web=/usr/share/novnc 6080 localhost:5901 > /dev/null 2>&1 &
+        echo "⚠ NoVNC starting... (check logs: /var/log/supervisor/novnc.log)"
     fi
 else
-    echo "⚠ VNC auto-start failed. You can start manually with: start-vnc.sh"
+    echo "⚠ Supervisor failed to start. Desktop services not available."
 fi
 
 # Create container readiness indicator
@@ -1941,10 +2137,11 @@ echo "Use 'agentic-status' to check system status"
 echo "Use 'init-project <name> [type]' to create new projects"
 echo ""
 echo "Desktop Environment:"
-echo "  VNC Server: Running on port 5901"
+echo "  VNC Server: Port 5901"
 echo "  NoVNC Web: http://localhost:6080/vnc.html"
 echo "  VNC Password: ubuntu"
 echo "  Desktop status: desktop-status.sh"
+echo "  Supervisor control: supervisorctl status"
 echo ""
 echo "Container is ready!"
 exec su - ubuntu -c "cd /workspace && bash"
