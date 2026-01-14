@@ -309,7 +309,8 @@ EOF
 RUN chmod +x /usr/local/bin/desktop-status.sh
 
 # Configure Supervisor to manage VNC and NoVNC services
-RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d
+RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d && \
+    chmod 755 /var/log/supervisor
 
 # Create supervisor configuration for VNC server
 RUN cat > /etc/supervisor/conf.d/vncserver.conf << 'EOF'
@@ -2088,7 +2089,11 @@ echo "pip version: $(pip --version)"
 echo "Git version: $(git --version)"
 echo "Docker version: $(docker --version 2>/dev/null || echo 'Docker not available')"
 
-# Start Supervisor to manage VNC and NoVNC services
+# Prepare supervisor log directory
+mkdir -p /var/log/supervisor
+chmod 755 /var/log/supervisor
+
+# Start Supervisor to manage VNC and NoVNC services (must run as root)
 echo ""
 echo "Starting Supervisor to manage desktop services..."
 /usr/bin/supervisord -c /etc/supervisor/supervisord.conf &
@@ -2149,8 +2154,9 @@ EOF
 
 RUN chmod +x /usr/local/bin/start-container.sh
 
-# Switch back to ubuntu user
-USER ubuntu
+# Keep running as root for container startup (supervisor needs root)
+# The startup script will switch to ubuntu user at the end
+USER root
 
 # Set default command
 CMD ["/usr/local/bin/start-container.sh"]
