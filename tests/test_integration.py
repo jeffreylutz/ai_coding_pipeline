@@ -345,33 +345,33 @@ class TestFullSystemIntegration:
         """Test Docker Compose integration and deployment."""
         if not os.path.exists("compose.yml"):
             pytest.skip("compose.yml not found")
-        
-        # Test docker-compose configuration
+
+        # Test docker compose configuration
         result = subprocess.run(
-            ["docker-compose", "config"],
+            ["docker", "compose", "config"],
             capture_output=True,
             text=True,
             cwd="."
         )
-        assert result.returncode == 0, f"docker-compose config should be valid: {result.stderr}"
-        
-        # Test docker-compose build (if build is specified)
+        assert result.returncode == 0, f"docker compose config should be valid: {result.stderr}"
+
+        # Test docker compose build (if build is specified)
         result = subprocess.run(
-            ["docker-compose", "config", "--services"],
+            ["docker", "compose", "config", "--services"],
             capture_output=True,
             text=True,
             cwd="."
         )
-        
+
         if result.returncode == 0:
             services = result.stdout.strip().split('\n')
             assert len(services) > 0, "Should have at least one service defined"
-            
+
             # Test that we can pull/build the services (dry run)
             for service in services:
                 if service.strip():
                     result = subprocess.run(
-                        ["docker-compose", "config", "--quiet"],
+                        ["docker", "compose", "config", "--quiet"],
                         capture_output=True,
                         text=True,
                         cwd="."

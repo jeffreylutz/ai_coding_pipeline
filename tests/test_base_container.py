@@ -52,9 +52,9 @@ class TestBaseContainerSetup:
         """Test that compose.yml exists and is valid."""
         assert os.path.exists("compose.yml"), "compose.yml must exist"
         
-        # Test docker-compose config validation
+        # Test docker compose config validation
         result = subprocess.run(
-            ["docker-compose", "config", "--quiet"],
+            ["docker compose", "config", "--quiet"],
             capture_output=True,
             text=True
         )

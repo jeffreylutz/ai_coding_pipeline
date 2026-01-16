@@ -132,7 +132,7 @@ class TestDocumentationCompleteness:
         
         # Test for specific usage patterns
         usage_patterns = [
-            "docker run", "docker-compose", "docker build",
+            "docker run", "docker compose", "docker build",
             "start-", ".sh", "init-project"
         ]
         
@@ -270,7 +270,7 @@ class TestDocumentationCompleteness:
         assert has_build_section, "README should have build instructions"
         
         # Test specific build commands are provided
-        build_commands = ["docker build", "./build.sh", "docker-compose"]
+        build_commands = ["docker build", "./build.sh", "docker compose"]
         found_commands = sum(1 for cmd in build_commands if cmd in content)
         assert found_commands >= 2, "README should provide multiple build options"
         
@@ -290,12 +290,12 @@ class TestDocumentationCompleteness:
         comment_lines = [line for line in compose_content.split('\n') if line.strip().startswith('#')]
         assert len(comment_lines) >= 3, "compose.yml should have explanatory comments"
         
-        # Test README mentions docker-compose
+        # Test README mentions docker compose
         with open("README.md", "r") as f:
             readme_content = f.read()
-        
-        assert "docker-compose" in readme_content, "README should mention docker-compose usage"
-        assert "docker-compose up" in readme_content, "README should show docker-compose up command"
+
+        assert "docker compose" in readme_content, "README should mention docker compose usage"
+        assert "docker compose up" in readme_content, "README should show docker compose up command"
     
     def test_build_script_documentation(self):
         """Test that build script is documented and self-explanatory."""

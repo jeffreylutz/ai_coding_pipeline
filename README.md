@@ -37,7 +37,7 @@ docker build -t agentic-coding-pipeline:latest .
 
 ```bash
 # Using Docker Compose (recommended)
-docker-compose up -d
+docker compose up -d
 
 # Or using Docker directly
 docker run -it --privileged \

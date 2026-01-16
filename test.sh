@@ -43,9 +43,9 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check if docker-compose is available
-    if ! command -v docker-compose &> /dev/null; then
-        print_error "docker-compose is not available. Please install docker-compose."
+    # Check if docker compose is available
+    if ! docker compose version &> /dev/null; then
+        print_error "docker compose is not available. Please install docker compose."
         exit 1
     fi
 
@@ -96,14 +96,14 @@ run_build_tests() {
         return 1
     fi
     
-    # Test docker-compose configuration
-    if [ -f "docker-$COMPOSE_FILE" ]; then
-        print_status "Validating docker-compose configuration..."
-        docker-compose config --quiet || {
-            print_error "docker-compose configuration validation failed"
+    # Test docker compose configuration
+    if [ -f "$COMPOSE_FILE" ]; then
+        print_status "Validating docker compose configuration..."
+        docker compose config --quiet || {
+            print_error "docker compose configuration validation failed"
             return 1
         }
-        print_success "docker-compose configuration is valid"
+        print_success "docker compose configuration is valid"
     fi
     
     return 0
@@ -114,8 +114,8 @@ build_container_if_needed() {
     print_status "Checking if container image exists..."
 
     if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
-        print_warning "Container image not found. Building with docker-compose..."
-        docker-compose -f "$COMPOSE_FILE" build
+        print_warning "Container image not found. Building with docker compose..."
+        docker compose -f "$COMPOSE_FILE" build
     else
         print_success "Container image found: $IMAGE_NAME"
     fi
@@ -126,7 +126,7 @@ run_property_tests() {
     print_status "Running property-based tests..."
 
     # Run all property tests with appropriate settings
-    # Note: Run from project root so tests can find Dockerfile and docker-$COMPOSE_FILE
+    # Note: Run from project root so tests can find Dockerfile and compose.yml
     python3 -m pytest \
         tests/test_base_container.py \
         tests/test_kiro_installation.py \
@@ -156,26 +156,26 @@ run_integration_tests() {
     print_status "Running integration tests..."
 
     # Test container startup
-    print_status "Testing container startup with docker-compose..."
-    docker-compose -f $COMPOSE_FILE up -d > /dev/null
+    print_status "Testing container startup with docker compose..."
+    docker compose -f $COMPOSE_FILE up -d > /dev/null
 
     # Wait for container to start
     sleep 5
 
     # Test basic functionality
-    if docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline agentic-status > /dev/null 2>&1; then
+    if docker compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline agentic-status > /dev/null 2>&1; then
         print_success "Container startup and basic functionality test passed"
     else
         print_error "Container startup or basic functionality test failed"
-        docker-compose -f $COMPOSE_FILE logs
-        docker-compose -f $COMPOSE_FILE down > /dev/null 2>&1
+        docker compose -f $COMPOSE_FILE logs
+        docker compose -f $COMPOSE_FILE down > /dev/null 2>&1
         return 1
     fi
 
     # Test pipeline projects accessibility
     print_status "Testing pipeline projects accessibility..."
     for project in kiro auto-claude continuous-claude automaker infiagent mai-ui loki-mode; do
-        if docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline test -d "/opt/pipelines/$project"; then
+        if docker compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline test -d "/opt/pipelines/$project"; then
             print_success "Pipeline project $project is accessible"
         else
             print_warning "Pipeline project $project not found"
@@ -185,7 +185,7 @@ run_integration_tests() {
     # Test additional tools accessibility
     print_status "Testing additional tools accessibility..."
     for tool in knownote vibium opentinker proxypal claude-transcripts; do
-        if docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline test -d "/opt/tools/$tool"; then
+        if docker compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline test -d "/opt/tools/$tool"; then
             print_success "Tool $tool is accessible"
         else
             print_warning "Tool $tool not found"
@@ -193,7 +193,7 @@ run_integration_tests() {
     done
 
     # Cleanup
-    docker-compose -f $COMPOSE_FILE down > /dev/null 2>&1
+    docker compose -f $COMPOSE_FILE down > /dev/null 2>&1
 
     return 0
 }
@@ -215,10 +215,10 @@ run_performance_tests() {
     fi
 
     # Test container startup time
-    print_status "Testing container startup time with docker-compose..."
+    print_status "Testing container startup time with docker compose..."
     local start_time=$(date +%s)
 
-    docker-compose -f $COMPOSE_FILE up -d > /dev/null
+    docker compose -f $COMPOSE_FILE up -d > /dev/null
 
     # Wait for container to be ready
     local ready=false
@@ -226,8 +226,8 @@ run_performance_tests() {
     local elapsed=0
 
     while [ $elapsed -lt $timeout ] && [ "$ready" = false ]; do
-        if docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline test -f /workspace/.ready 2>/dev/null || \
-           docker-compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline agentic-status > /dev/null 2>&1; then
+        if docker compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline test -f /workspace/.ready 2>/dev/null || \
+           docker compose -f $COMPOSE_FILE exec -T agentic-coding-pipeline agentic-status > /dev/null 2>&1; then
             ready=true
         else
             sleep 2
@@ -247,7 +247,7 @@ run_performance_tests() {
     fi
 
     # Cleanup
-    docker-compose -f $COMPOSE_FILE down > /dev/null 2>&1
+    docker compose -f $COMPOSE_FILE down > /dev/null 2>&1
 
     return 0
 }

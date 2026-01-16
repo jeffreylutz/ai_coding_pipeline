@@ -51,9 +51,9 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check if docker-compose is available
-    if ! command -v docker-compose &> /dev/null; then
-        print_error "docker-compose is not available. Please install docker-compose."
+    # Check if docker compose is available
+    if ! command -v docker compose &> /dev/null; then
+        print_error "docker compose is not available. Please install docker compose."
         exit 1
     fi
 
@@ -74,11 +74,11 @@ check_prerequisites() {
 
 # Function to build the Docker image
 build_image() {
-    print_status "Building Docker image with docker-compose: $IMAGE_NAME:$IMAGE_TAG"
+    print_status "Building Docker image with docker compose: $IMAGE_NAME:$IMAGE_TAG"
     print_status "This may take several minutes..."
 
-    # Build with docker-compose using BuildKit for better performance and caching
-    DOCKER_BUILDKIT=1 docker-compose -f "$COMPOSE_FILE" build --no-cache --progress=plain
+    # Build with docker compose using BuildKit for better performance and caching
+    DOCKER_BUILDKIT=1 docker compose -f "$COMPOSE_FILE" build --no-cache --progress=plain
 
     if [ $? -eq 0 ]; then
         print_success "Docker image built successfully!"
@@ -132,16 +132,16 @@ show_usage() {
     echo ""
     print_status "Usage Instructions:"
     echo "  1. Run with Docker Compose (recommended):"
-    echo "     docker-compose -f $COMPOSE_FILE up -d"
+    echo "     docker compose -f $COMPOSE_FILE up -d"
     echo ""
     echo "  2. Access the container:"
     echo "     docker exec -it agentic-coding-container bash"
     echo ""
     echo "  3. View logs:"
-    echo "     docker-compose -f $COMPOSE_FILE logs -f"
+    echo "     docker compose -f $COMPOSE_FILE logs -f"
     echo ""
     echo "  4. Stop the container:"
-    echo "     docker-compose -f $COMPOSE_FILE down"
+    echo "     docker compose -f $COMPOSE_FILE down"
     echo ""
     print_status "The container includes all multi-agent coding pipeline projects and development tools."
 }

@@ -93,7 +93,7 @@ validate: ## Validate all configurations
 
 validate-docker: ## Validate Docker configuration
 	@echo "Validating Docker configuration..."
-	docker-compose config --quiet
+	docker compose config --quiet
 	@echo "Docker Compose configuration is valid"
 
 validate-k8s: ## Validate Kubernetes manifests
@@ -214,15 +214,15 @@ logs: ## Show application logs
 # Development targets
 dev: ## Start development environment
 	@echo "Starting development environment..."
-	docker-compose -f docker-compose.yml -f deployments/local/docker-compose.override.yml up -d
+	docker compose -f docker compose.yml -f deployments/local/docker compose.override.yml up -d
 
 dev-stop: ## Stop development environment
 	@echo "Stopping development environment..."
-	docker-compose -f docker-compose.yml -f deployments/local/docker-compose.override.yml down
+	docker compose -f docker compose.yml -f deployments/local/docker compose.override.yml down
 
 dev-logs: ## Show development environment logs
 	@echo "Showing development environment logs..."
-	docker-compose -f docker-compose.yml -f deployments/local/docker-compose.override.yml logs -f
+	docker compose -f docker compose.yml -f deployments/local/docker compose.override.yml logs -f
 
 # CI/CD targets
 ci: ## Run CI pipeline locally
@@ -277,7 +277,7 @@ version: ## Show version information
 	@echo ""
 	@echo "Tool versions:"
 	@docker --version 2>/dev/null || echo "Docker: not installed"
-	@docker-compose --version 2>/dev/null || echo "Docker Compose: not installed"
+	@docker compose --version 2>/dev/null || echo "Docker Compose: not installed"
 	@kubectl version --client 2>/dev/null || echo "kubectl: not installed"
 	@python3 --version 2>/dev/null || echo "Python 3: not installed"
 

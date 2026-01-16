@@ -1,5 +1,5 @@
 # Local development override for Docker Compose
-# This file extends the main docker-compose.yml for local development
+# This file extends the main docker compose.yml for local development
 
 version: '3.8'
 

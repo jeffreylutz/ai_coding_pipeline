@@ -266,7 +266,7 @@ Supports multiple environments and deployment platforms:
 ```
 deployments/
 ├── local/
-│   └── docker-compose.override.yml
+│   └── docker compose.override.yml
 ├── staging/
 │   └── kustomization.yaml
 └── production/
@@ -323,7 +323,7 @@ make setup              # Setup development environment
 
 1. **`automation.config`** - Main automation configuration
 2. **`.github/workflows/ci.yml`** - CI/CD pipeline configuration
-3. **`docker-compose.yml`** - Local deployment configuration
+3. **`docker compose.yml`** - Local deployment configuration
 4. **`kubernetes/deployment.yaml`** - Kubernetes base configuration
 5. **`deployments/*/kustomization.yaml`** - Environment-specific configurations
 

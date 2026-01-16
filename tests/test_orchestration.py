@@ -41,10 +41,10 @@ class TestOrchestrationCompatibility:
     def test_docker_compose_configuration_validity(self):
         """Test that compose.yml is valid and well-configured."""
         assert os.path.exists("compose.yml"), "compose.yml must exist"
-        
-        # Test docker-compose config validation
+
+        # Test docker compose config validation
         result = subprocess.run(
-            ["docker-compose", "config", "--quiet"],
+            ["docker", "compose", "config", "--quiet"],
             capture_output=True,
             text=True,
             cwd="."
@@ -77,7 +77,7 @@ class TestOrchestrationCompatibility:
         expected_ports = ["3000", "8000", "8080", "9000"]
         for expected_port in expected_ports:
             port_found = any(expected_port in str(port) for port in ports)
-            assert port_found, f"Port {expected_port} should be mapped in docker-compose"
+            assert port_found, f"Port {expected_port} should be mapped in docker compose"
     
     def test_kubernetes_deployment_configuration(self):
         """Test that Kubernetes deployment configuration is valid."""
@@ -125,18 +125,18 @@ class TestOrchestrationCompatibility:
     
         
     def test_docker_compose_deployment(self):
-        """Test that docker-compose deployment works correctly."""
+        """Test that docker compose deployment works correctly."""
         if not os.path.exists("compose.yml"):
             pytest.skip("compose.yml not found")
-        
-        # Test docker-compose up (dry run)
+
+        # Test docker compose up (dry run)
         result = subprocess.run(
-            ["docker-compose", "config"],
+            ["docker", "compose", "config"],
             capture_output=True,
             text=True,
             cwd="."
         )
-        assert result.returncode == 0, f"docker-compose config failed: {result.stderr}"
+        assert result.returncode == 0, f"docker compose config failed: {result.stderr}"
         
         # Parse the composed configuration
         composed_config = yaml.safe_load(result.stdout)

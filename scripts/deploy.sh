@@ -154,7 +154,7 @@ check_prerequisites() {
                 exit 1
             fi
             
-            if ! command -v docker-compose &> /dev/null; then
+            if ! command -v docker compose &> /dev/null; then
                 print_error "Docker Compose is not installed"
                 exit 1
             fi
@@ -194,13 +194,13 @@ validate_config() {
     
     case "$ENVIRONMENT" in
         local)
-            # Validate docker-compose.yml
-            if [ ! -f "$PROJECT_ROOT/docker-compose.yml" ]; then
-                print_error "docker-compose.yml not found"
+            # Validate docker compose.yml
+            if [ ! -f "$PROJECT_ROOT/docker compose.yml" ]; then
+                print_error "docker compose.yml not found"
                 exit 1
             fi
             
-            docker-compose -f "$PROJECT_ROOT/docker-compose.yml" config --quiet
+            docker compose -f "$PROJECT_ROOT/docker compose.yml" config --quiet
             print_success "Docker Compose configuration is valid"
             ;;
             
@@ -236,7 +236,7 @@ deploy_local() {
     
     if [ "$DRY_RUN" = true ]; then
         print_status "Dry run - showing what would be deployed:"
-        docker-compose config
+        docker compose config
         return 0
     fi
     
@@ -247,14 +247,14 @@ deploy_local() {
     fi
     
     # Deploy with Docker Compose
-    docker-compose up -d
+    docker compose up -d
     
     # Wait for services to be ready
     print_status "Waiting for services to be ready..."
     sleep 10
     
     # Check service health
-    if docker-compose ps | grep -q "Up"; then
+    if docker compose ps | grep -q "Up"; then
         print_success "Local deployment completed successfully"
         print_status "Services are available at:"
         print_status "  - Web: http://localhost:3000"
@@ -263,7 +263,7 @@ deploy_local() {
         print_status "  - Service: http://localhost:9000"
     else
         print_error "Some services failed to start"
-        docker-compose logs
+        docker compose logs
         exit 1
     fi
 }
@@ -327,7 +327,7 @@ check_status() {
     
     case "$ENVIRONMENT" in
         local)
-            docker-compose ps
+            docker compose ps
             ;;
         staging|production)
             kubectl get deployments -n "$NAMESPACE" -l app=agentic-coding-pipeline-${ENVIRONMENT}
@@ -343,7 +343,7 @@ show_logs() {
     
     case "$ENVIRONMENT" in
         local)
-            docker-compose logs -f
+            docker compose logs -f
             ;;
         staging|production)
             kubectl logs -f deployment/agentic-coding-pipeline-${ENVIRONMENT} -n "$NAMESPACE"
@@ -358,7 +358,7 @@ rollback_deployment() {
     case "$ENVIRONMENT" in
         local)
             print_warning "Rollback not supported for local deployments"
-            print_status "Use 'docker-compose down && docker-compose up -d' to restart"
+            print_status "Use 'docker compose down && docker compose up -d' to restart"
             ;;
         staging|production)
             kubectl rollout undo deployment/agentic-coding-pipeline-${ENVIRONMENT} -n "$NAMESPACE"
@@ -374,7 +374,7 @@ cleanup_resources() {
     
     case "$ENVIRONMENT" in
         local)
-            docker-compose down -v
+            docker compose down -v
             docker system prune -f
             print_success "Local cleanup completed"
             ;;
