@@ -70,6 +70,11 @@ RUN apt-get update && apt-get install -y \
 # Desktop Environment Setup - IceWM Desktop with NoVNC
 # =============================================================================
 
+# Add Mozilla Team PPA for proper Firefox installation (not snap)
+RUN add-apt-repository -y ppa:mozillateam/ppa \
+    && echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001' | tee /etc/apt/preferences.d/mozilla-firefox \
+    && echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:${distro_codename}";' | tee /etc/apt/apt.conf.d/51unattended-upgrades-firefox
+
 # Install IceWM Desktop, NoVNC, and all dependencies in one layer
 # Using IceWM instead of GNOME for container compatibility (no systemd required)
 RUN apt-get update && apt-get install -y \
@@ -97,6 +102,8 @@ RUN apt-get update && apt-get install -y \
     fonts-noto \
     # Audio support \
     pulseaudio \
+    # Web browser \
+    firefox \
     # Additional utilities \
     xdotool \
     wmctrl \
@@ -307,6 +314,16 @@ echo "To stop VNC: vncserver -kill :1"
 EOF
 
 RUN chmod +x /usr/local/bin/desktop-status.sh
+
+# Create Firefox launcher script
+RUN cat > /usr/local/bin/start-firefox << 'EOF'
+#!/bin/bash
+# Launch Firefox browser
+export DISPLAY=:1
+firefox "$@" &
+EOF
+
+RUN chmod +x /usr/local/bin/start-firefox
 
 # Configure Supervisor to manage VNC and NoVNC services
 RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d && \
