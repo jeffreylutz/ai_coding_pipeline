@@ -2,3 +2,6 @@
 test-report*
 __pycache__
 .hypothesis
+.vscode/
+trash/
+workspace/
