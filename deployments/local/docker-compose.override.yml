@@ -27,6 +27,10 @@ services:
       - "8000:8000"
       - "8080:8080"
       - "9000:9000"
+      # Desktop environment ports
+      - "5901:5901"   # VNC server
+      - "6080:6080"   # NoVNC web interface
+      - "3389:3389"   # xRDP server (Remote Desktop Protocol)
       # Additional development ports
       - "5000:5000"   # Flask dev server
       - "3001:3001"   # React dev server

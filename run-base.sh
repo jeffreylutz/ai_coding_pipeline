@@ -61,12 +61,13 @@ echo ""
 
 # Start the container with docker run
 # Using --privileged for desktop environment capabilities
-# Start supervisord to manage VNC and NoVNC services
+# Start supervisord to manage VNC, NoVNC, and xRDP services
 docker run -d \
     --name "${CONTAINER_NAME}" \
     --hostname agentic-base \
     -p 5901:5901 \
     -p 6080:6080 \
+    -p 3389:3389 \
     -v "${WORKSPACE_DIR}:/workspace" \
     --restart unless-stopped \
     "${IMAGE_NAME}" \
@@ -88,6 +89,8 @@ if container_running; then
     echo "  VNC Server:   localhost:5901"
     echo "  VNC Password: ubuntu"
     echo "  NoVNC Web:    http://localhost:6080/vnc.html"
+    echo "  xRDP Server:  localhost:3389 (RDP protocol)"
+    echo "  xRDP User:    ubuntu"
     echo ""
     echo -e "${BLUE}Container Management:${NC}"
     echo "  View logs:          docker logs -f ${CONTAINER_NAME}"
@@ -99,6 +102,7 @@ if container_running; then
     echo "  - Ubuntu 24.04 LTS"
     echo "  - IceWM desktop environment"
     echo "  - VNC and NoVNC servers"
+    echo "  - xRDP server (Remote Desktop Protocol)"
     echo "  - Essential development tools (git, vim, curl, etc.)"
     echo "  - Supervisor for service management"
     echo ""
@@ -115,3 +119,5 @@ else
     echo "  docker logs ${CONTAINER_NAME}"
     exit 1
 fi
+
+which say && say "Launched BASE image container"

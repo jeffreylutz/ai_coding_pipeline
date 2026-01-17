@@ -17,6 +17,7 @@ services:
       - "9000:9000"   # Additional service port
       - "5901:5901"   # VNC server
       - "6080:6080"   # NoVNC web interface
+      - "3389:3389"   # xRDP server (Remote Desktop Protocol)
     
     # Volume mounts for persistent development work
     volumes:

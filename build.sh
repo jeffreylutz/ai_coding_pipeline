@@ -166,6 +166,8 @@ main() {
 
     # Restart
     ./run.sh
+
+    which say && say "Build completed"
 }
 
 # Run main function

@@ -24,7 +24,8 @@ ARG USER_GID=$USER_UID
 RUN apt-get update \
      && apt-get install -y sudo \
      && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
-     && chmod 0440 /etc/sudoers.d/ubuntu
+     && chmod 0440 /etc/sudoers.d/ubuntu \
+     && echo 'ubuntu:ubuntu' | chpasswd
     
 # RUN groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/null || true \
 #     && useradd --uid 1000 --gid 1000 -m ubuntu 2>/dev/null || usermod -u 1000 -g 1000 ubuntu 2>/dev/null || true \
@@ -96,6 +97,9 @@ RUN apt-get update && apt-get install -y \
     python3-numpy \
     novnc \
     websockify \
+    # RDP server (xrdp) \
+    xrdp \
+    xorgxrdp \
     # Fonts and rendering \
     fonts-liberation \
     fonts-dejavu \
@@ -157,6 +161,177 @@ alwaysshared
 EOF
 
 RUN chown ubuntu:ubuntu /home/ubuntu/.vnc/config
+
+# =============================================================================
+# Configure xrdp for Remote Desktop Protocol (RDP) access
+# =============================================================================
+
+# Configure xrdp to use IceWM
+RUN cat > /home/ubuntu/.xsession << 'EOF'
+#!/bin/bash
+# xRDP session startup script for IceWM
+
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+
+# Start dbus session
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    eval $(dbus-launch --sh-syntax)
+fi
+
+# Set background color
+xsetroot -solid darkblue &
+
+# Start file manager (optional, in background)
+nautilus --no-desktop &
+
+# Start terminal
+gnome-terminal &
+
+# Start IceWM window manager
+exec icewm-session
+EOF
+
+RUN chmod +x /home/ubuntu/.xsession && \
+    chown ubuntu:ubuntu /home/ubuntu/.xsession
+
+# Configure xrdp settings
+RUN sed -i 's/^port=.*/port=3389/' /etc/xrdp/xrdp.ini && \
+    sed -i 's/^max_bpp=.*/max_bpp=32/' /etc/xrdp/xrdp.ini && \
+    sed -i 's/^xserverbpp=.*/xserverbpp=24/' /etc/xrdp/xrdp.ini && \
+    sed -i 's/^#bitmap_compression=.*/bitmap_compression=true/' /etc/xrdp/xrdp.ini
+
+# Configure the existing [Xorg] section properly
+# The default xrdp.ini already has an [Xorg] section, we need to fix its port
+RUN sed -i '/^\[Xorg\]/,/^\[/{s/port=3389/port=-1/}' /etc/xrdp/xrdp.ini && \
+    sed -i '/^\[Xorg\]/,/^\[/{s/^lib=.*/lib=libxup.so/}' /etc/xrdp/xrdp.ini
+
+# Completely remove the Xvnc section to avoid conflicts
+# Delete from [Xvnc] to the line before the next section [vnc-any]
+RUN sed -i '/^\[Xvnc\]/,/^\[vnc-any\]/{/^\[vnc-any\]/!d;}' /etc/xrdp/xrdp.ini
+
+# Set xrdp to use the xsession script
+RUN cat > /etc/xrdp/startwm.sh << 'EOF'
+#!/bin/bash
+# xrdp startwm script
+
+# Log for debugging
+exec > $HOME/.xsession-errors 2>&1
+
+if [ -r /etc/default/locale ]; then
+  . /etc/default/locale
+  export LANG LANGUAGE
+fi
+
+echo "Starting xRDP session at $(date)"
+echo "USER: $USER"
+echo "HOME: $HOME"
+echo "DISPLAY: $DISPLAY"
+
+# Test if X server is available
+if ! xdpyinfo >/dev/null 2>&1; then
+    echo "ERROR: X server not available on DISPLAY $DISPLAY"
+    sleep 5
+fi
+
+# Execute user's .xsession if it exists
+if [ -f $HOME/.xsession ]; then
+    echo "Executing $HOME/.xsession"
+    exec $HOME/.xsession
+else
+    # Fallback to IceWM
+    echo "No .xsession found, starting icewm-session"
+    exec icewm-session
+fi
+EOF
+
+RUN chmod +x /etc/xrdp/startwm.sh
+
+# Allow ubuntu user to run xrdp
+RUN adduser ubuntu ssl-cert
+
+# Configure xrdp sesman to allow connections
+RUN sed -i 's/^AllowRootLogin=.*/AllowRootLogin=false/' /etc/xrdp/sesman.ini && \
+    sed -i 's/^MaxSessions=.*/MaxSessions=10/' /etc/xrdp/sesman.ini && \
+    sed -i 's/^EnableUserWindowManager=.*/EnableUserWindowManager=true/' /etc/xrdp/sesman.ini || \
+    echo "EnableUserWindowManager=true" >> /etc/xrdp/sesman.ini
+
+# Ensure xrdp can write to required directories
+RUN mkdir -p /var/run/xrdp && \
+    chown xrdp:xrdp /var/run/xrdp && \
+    chmod 755 /var/run/xrdp
+
+# Create xorg.conf for xrdp
+RUN cat > /etc/xrdp/xorg.conf << 'EOF'
+Section "ServerLayout"
+    Identifier     "X.org Configured"
+    Screen      0  "Screen0" 0 0
+    InputDevice    "Mouse0" "CorePointer"
+    InputDevice    "Keyboard0" "CoreKeyboard"
+EndSection
+
+Section "Files"
+    ModulePath   "/usr/lib/xorg/modules"
+    FontPath     "/usr/share/fonts/X11/misc"
+    FontPath     "/usr/share/fonts/X11/cyrillic"
+    FontPath     "/usr/share/fonts/X11/100dpi/:unscaled"
+    FontPath     "/usr/share/fonts/X11/75dpi/:unscaled"
+    FontPath     "/usr/share/fonts/X11/Type1"
+    FontPath     "/usr/share/fonts/X11/100dpi"
+    FontPath     "/usr/share/fonts/X11/75dpi"
+    FontPath     "built-ins"
+EndSection
+
+Section "Module"
+    Load  "dbe"
+    Load  "ddc"
+    Load  "extmod"
+    Load  "glx"
+    Load  "int10"
+    Load  "record"
+    Load  "vbe"
+    Load  "xorgxrdp"
+    Load  "fb"
+EndSection
+
+Section "InputDevice"
+    Identifier  "Keyboard0"
+    Driver      "kbd"
+EndSection
+
+Section "InputDevice"
+    Identifier  "Mouse0"
+    Driver      "mouse"
+    Option      "Protocol" "auto"
+    Option      "Device" "/dev/input/mice"
+    Option      "ZAxisMapping" "4 5 6 7"
+EndSection
+
+Section "Monitor"
+    Identifier   "Monitor0"
+    VendorName   "Monitor Vendor"
+    ModelName    "Monitor Model"
+EndSection
+
+Section "Device"
+    Identifier  "Card0"
+    Driver      "xorgxrdp"
+    Option      "DRMDevice" ""
+    Option      "DRI3" "false"
+EndSection
+
+Section "Screen"
+    Identifier "Screen0"
+    Device     "Card0"
+    Monitor    "Monitor0"
+    DefaultDepth 24
+    SubSection "Display"
+        Viewport   0 0
+        Depth     24
+        Modes "1920x1080" "1680x1050" "1600x900" "1440x900" "1366x768" "1280x1024" "1280x800" "1024x768"
+    EndSubSection
+EndSection
+EOF
 
 # Create startup script for VNC and NoVNC (now uses Supervisor)
 RUN cat > /usr/local/bin/start-vnc.sh << 'EOF'
@@ -301,6 +476,21 @@ else
     echo "✗ NoVNC Web Interface: Not running"
 fi
 
+# Check xRDP
+if pgrep -x "xrdp" > /dev/null; then
+    echo "✓ xRDP Server: Running"
+    echo "  Port: 3389"
+else
+    echo "✗ xRDP Server: Not running"
+fi
+
+# Check xRDP Session Manager
+if pgrep -x "xrdp-sesman" > /dev/null; then
+    echo "✓ xRDP Session Manager: Running"
+else
+    echo "✗ xRDP Session Manager: Not running"
+fi
+
 # Check IceWM
 if pgrep -x "icewm" > /dev/null || pgrep -x "icewm-session" > /dev/null; then
     echo "✓ IceWM Window Manager: Running"
@@ -311,6 +501,7 @@ fi
 echo ""
 echo "To start desktop environment: start-vnc.sh"
 echo "To stop VNC: vncserver -kill :1"
+echo "To manage xRDP: xrdp-ctl {status|start|stop|restart}"
 EOF
 
 RUN chmod +x /usr/local/bin/desktop-status.sh
@@ -324,6 +515,78 @@ firefox "$@" &
 EOF
 
 RUN chmod +x /usr/local/bin/start-firefox
+
+# Create xRDP control script
+RUN cat > /usr/local/bin/xrdp-ctl << 'EOF'
+#!/bin/bash
+# xRDP Service Control Helper
+
+case "$1" in
+    status)
+        echo "=== xRDP Services Status ==="
+        supervisorctl status xrdp-sesman xrdp
+        echo ""
+        echo "=== xRDP Process Status ==="
+        if pgrep -x "xrdp-sesman" > /dev/null; then
+            echo "✓ xRDP Session Manager: Running"
+        else
+            echo "✗ xRDP Session Manager: Not running"
+        fi
+        if pgrep -x "xrdp" > /dev/null; then
+            echo "✓ xRDP Server: Running on port 3389"
+        else
+            echo "✗ xRDP Server: Not running"
+        fi
+        ;;
+    start)
+        echo "Starting xRDP services..."
+        supervisorctl start xrdp-sesman xrdp
+        sleep 2
+        supervisorctl status xrdp-sesman xrdp
+        ;;
+    stop)
+        echo "Stopping xRDP services..."
+        supervisorctl stop xrdp xrdp-sesman
+        sleep 1
+        supervisorctl status xrdp-sesman xrdp
+        ;;
+    restart)
+        echo "Restarting xRDP services..."
+        supervisorctl restart xrdp-sesman xrdp
+        sleep 2
+        supervisorctl status xrdp-sesman xrdp
+        ;;
+    logs)
+        service="${2:-xrdp}"
+        if [ "$service" = "xrdp" ]; then
+            echo "=== xRDP Server Logs ==="
+            tail -50 /var/log/supervisor/xrdp.log
+        elif [ "$service" = "sesman" ]; then
+            echo "=== xRDP Session Manager Logs ==="
+            tail -50 /var/log/supervisor/xrdp-sesman.log
+        else
+            echo "Unknown service: $service"
+            echo "Valid services: xrdp, sesman"
+            exit 1
+        fi
+        ;;
+    *)
+        echo "xRDP Service Control"
+        echo "Usage: xrdp-ctl {status|start|stop|restart|logs [xrdp|sesman]}"
+        echo ""
+        echo "Examples:"
+        echo "  xrdp-ctl status        - Show service status"
+        echo "  xrdp-ctl start         - Start xRDP services"
+        echo "  xrdp-ctl stop          - Stop xRDP services"
+        echo "  xrdp-ctl restart       - Restart xRDP services"
+        echo "  xrdp-ctl logs xrdp     - Show xRDP server logs"
+        echo "  xrdp-ctl logs sesman   - Show xRDP session manager logs"
+        exit 1
+        ;;
+esac
+EOF
+
+RUN chmod +x /usr/local/bin/xrdp-ctl
 
 # Configure Supervisor to manage VNC and NoVNC services
 RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d && \
@@ -356,6 +619,32 @@ stdout_logfile=/var/log/supervisor/novnc.log
 stderr_logfile=/var/log/supervisor/novnc.err
 priority=20
 depends_on=vncserver
+EOF
+
+# Create supervisor configuration for xrdp
+RUN cat > /etc/supervisor/conf.d/xrdp.conf << 'EOF'
+[program:xrdp-sesman]
+command=/usr/sbin/xrdp-sesman --nodaemon
+user=root
+autostart=true
+autorestart=true
+startsecs=5
+startretries=3
+stdout_logfile=/var/log/supervisor/xrdp-sesman.log
+stderr_logfile=/var/log/supervisor/xrdp-sesman.err
+priority=15
+
+[program:xrdp]
+command=/usr/sbin/xrdp --nodaemon
+user=root
+autostart=true
+autorestart=true
+startsecs=5
+startretries=3
+stdout_logfile=/var/log/supervisor/xrdp.log
+stderr_logfile=/var/log/supervisor/xrdp.err
+priority=16
+depends_on=xrdp-sesman
 EOF
 
 # Create VNC startup wrapper script for supervisor
@@ -2029,6 +2318,8 @@ WORKDIR /workspace
 EXPOSE 3000 8000 8080 9000
 # Expose VNC and NoVNC ports
 EXPOSE 5901 6080
+# Expose xRDP port
+EXPOSE 3389
 
 # Ensure proper ownership in final stage
 USER root
@@ -2139,6 +2430,18 @@ if kill -0 $SUPERVISOR_PID 2>/dev/null; then
     else
         echo "⚠ NoVNC starting... (check logs: /var/log/supervisor/novnc.log)"
     fi
+
+    if pgrep -x "xrdp" > /dev/null 2>&1; then
+        echo "✓ xRDP server started on port 3389"
+    else
+        echo "⚠ xRDP starting... (check logs: /var/log/supervisor/xrdp.log)"
+    fi
+
+    if pgrep -x "xrdp-sesman" > /dev/null 2>&1; then
+        echo "✓ xRDP session manager started"
+    else
+        echo "⚠ xRDP session manager starting... (check logs: /var/log/supervisor/xrdp-sesman.log)"
+    fi
 else
     echo "⚠ Supervisor failed to start. Desktop services not available."
 fi
@@ -2162,7 +2465,11 @@ echo "Desktop Environment:"
 echo "  VNC Server: Port 5901"
 echo "  NoVNC Web: http://localhost:6080/vnc.html"
 echo "  VNC Password: ubuntu"
+echo "  xRDP Server: Port 3389 (RDP)"
+echo "  xRDP Username: ubuntu"
 echo "  Desktop status: desktop-status.sh"
+echo "  VNC control: vnc-ctl {status|start|stop|restart}"
+echo "  xRDP control: xrdp-ctl {status|start|stop|restart}"
 echo "  Supervisor control: supervisorctl status"
 echo ""
 echo "Container is ready!"

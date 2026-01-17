@@ -171,6 +171,8 @@ main() {
 
     # Start the container
     ./run-base.sh
+
+    which say && say "Build completed"
 }
 
 # Run main function
