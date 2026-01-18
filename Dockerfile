@@ -115,6 +115,14 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Google Chrome
+RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/google-chrome.deb && \
+    apt-get update && \
+    apt-get install -y /tmp/google-chrome.deb && \
+    rm /tmp/google-chrome.deb && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Configure VNC for ubuntu user
 RUN mkdir -p /home/ubuntu/.vnc && \
     echo "ubuntu" | vncpasswd -f > /home/ubuntu/.vnc/passwd && \
@@ -516,6 +524,17 @@ EOF
 
 RUN chmod +x /usr/local/bin/start-firefox
 
+# Create Google Chrome launcher script
+RUN cat > /usr/local/bin/start-chrome << 'EOF'
+#!/bin/bash
+# Launch Google Chrome browser
+export DISPLAY=:1
+# Run Chrome with --no-sandbox flag for container compatibility
+google-chrome --no-sandbox "$@" &
+EOF
+
+RUN chmod +x /usr/local/bin/start-chrome
+
 # Create xRDP control script
 RUN cat > /usr/local/bin/xrdp-ctl << 'EOF'
 #!/bin/bash
@@ -863,32 +882,22 @@ RUN npm install -g \
 RUN curl -fsSL https://cli.kiro.dev/install | bash \
     && apt-get install -f
 
-# Create Kiro startup script
-RUN mkdir -p /opt/pipelines/kiro
-RUN cat > /opt/pipelines/kiro/start-kiro.sh << 'EOF'
+# Create Kiro wrapper script for container compatibility
+# Kiro is an Electron app and needs --no-sandbox to run in Docker
+RUN cat > /usr/local/bin/kiro-safe << 'EOF'
 #!/bin/bash
-# Kiro Autonomous Agent Startup Script
+# Kiro CLI launcher with container-safe flags
+# Disables sandboxing which is incompatible with Docker containers
 
-echo "Starting Kiro Autonomous Agent..."
-echo "Configuration: /opt/configs/kiro/config.json"
-echo "Workspace: /workspace"
-echo "Logs: /opt/logs/kiro"
-
-# Create logs directory
-mkdir -p /opt/logs/kiro
-
-# Note: Actual Kiro installation would go here
-# This is a placeholder for the proprietary Kiro agent
-echo "Kiro Autonomous Agent is configured and ready"
-echo "To install the actual Kiro agent, visit: https://kiro.dev/autonomous-agent/"
-echo "Current configuration supports:"
-echo "- Sandbox environment with Dockerfile detection"
-echo "- Autonomous operation with context maintenance"
-echo "- Learning from interactions"
-echo "- Containerized development workflows"
+exec /usr/bin/kiro \
+    --no-sandbox \
+    --disable-namespace-sandbox \
+    --disable-setuid-sandbox \
+    --disable-dev-shm-usage \
+    "$@"
 EOF
 
-RUN chmod +x /opt/pipelines/kiro/start-kiro.sh
+RUN chmod +x /usr/local/bin/kiro-safe
 
 # Install Auto-Claude Framework
 RUN cd /opt/pipelines && \
