@@ -780,6 +780,15 @@ RUN git config --global init.defaultBranch main \
     && git config --global core.editor "vim" \
     && git config --global pull.rebase false
 
+# Install zsh shell (required for oh-my-zsh)
+RUN apt-get update && apt-get install -y \
+    zsh \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set zsh as default shell for ubuntu user
+RUN usermod -s /usr/bin/zsh ubuntu
+
 # Install Kiro CLI for ubuntu user (needs Node.js, so installed here after Node.js setup)
 RUN sudo -u ubuntu bash -c 'curl -fsSL https://cli.kiro.dev/install | bash' \
     && apt-get install -f
@@ -819,6 +828,9 @@ RUN sudo -u ubuntu sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/ma
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/ubuntu/.zshrc && \
     chown ubuntu:ubuntu /home/ubuntu/.zshrc
 
+# Set Firefox as default browser for ubuntu user
+RUN sudo -u ubuntu xdg-settings set default-web-browser firefox.desktop
+
 # =============================================================================
 # Stage 3: Base Container Image Integration
 # =============================================================================
@@ -833,9 +845,9 @@ RUN git clone https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup
 
 # Install additional tools commonly found in agentic coding environments
 # Note: curl, wget, jq, htop, netcat-openbsd already installed in base stage
+# Note: zsh already installed in runtime stage
 RUN apt-get update && apt-get install -y \
     # Terminal and shell enhancements \
-    zsh \
     tmux \
     screen \
     # File management \
@@ -2332,8 +2344,8 @@ RUN npm install -g \
 # =============================================================================
 FROM development_enhanced AS final
 
-# Set working directory
-WORKDIR /workspace
+# Set working directory to ubuntu user's home
+WORKDIR /home/ubuntu
 
 # Expose common development ports
 EXPOSE 3000 8000 8080 9000
@@ -2494,7 +2506,7 @@ echo "  xRDP control: xrdp-ctl {status|start|stop|restart}"
 echo "  Supervisor control: supervisorctl status"
 echo ""
 echo "Container is ready!"
-exec su - ubuntu -c "cd /workspace && bash"
+exec su - ubuntu -c "cd /home/ubuntu && zsh"
 EOF
 
 RUN chmod +x /usr/local/bin/start-container.sh
