@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Build script for Agentic Coding Pipeline Base Container
-# This script builds only the base stage of the Docker container (Ubuntu + Desktop Environment)
+# Build script for Agentic Coding Pipeline runtime Container
+# This script builds only the runtime stage of the Docker container (Ubuntu + Desktop Environment)
 
 set -e  # Exit on any error
 
@@ -13,10 +13,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-IMAGE_NAME="agentic-coding-base"
+IMAGE_NAME="agentic-coding-runtime"
 IMAGE_TAG="latest"
 DOCKERFILE="Dockerfile"
-BUILD_TARGET="base"
+BUILD_TARGET="runtime"
 
 # Function to print colored output
 print_status() {
@@ -62,11 +62,11 @@ check_prerequisites() {
 
 # Function to build the Docker image
 build_image() {
-    print_status "Building Docker image (base stage only): $IMAGE_NAME:$IMAGE_TAG"
+    print_status "Building Docker image (runtime stage only): $IMAGE_NAME:$IMAGE_TAG"
     print_status "Target stage: $BUILD_TARGET"
     print_status "This may take several minutes..."
 
-    # Build with BuildKit targeting the base stage only
+    # Build with BuildKit targeting the runtime stage only
     DOCKER_BUILDKIT=1 docker build \
         --target "$BUILD_TARGET" \
         --tag "$IMAGE_NAME:$IMAGE_TAG" \
@@ -76,9 +76,9 @@ build_image() {
         .
 
     if [ $? -eq 0 ]; then
-        print_success "Docker base image built successfully!"
+        print_success "Docker runtime image built successfully!"
     else
-        print_error "Docker base image build failed!"
+        print_error "Docker runtime image build failed!"
         exit 1
     fi
 }
@@ -109,9 +109,9 @@ verify_image() {
             print_status "Image size: ${IMAGE_SIZE_MB}MB"
         fi
 
-        # Check if size is reasonable (base should be smaller than full image)
+        # Check if size is reasonable (Runtime should be smaller than full image)
         if [ $IMAGE_SIZE_GB -gt 4 ]; then
-            print_warning "Base image size exceeds 4GB. This is larger than expected."
+            print_warning "Runtime image size exceeds 4GB. This is larger than expected."
         fi
 
     else
@@ -127,7 +127,7 @@ show_usage() {
     echo ""
     print_status "Usage Instructions:"
     echo "  1. Run the container (recommended):"
-    echo "     ./run-base.sh"
+    echo "     ./run-runtime.sh"
     echo ""
     echo "  2. Run manually with docker:"
     echo "     docker run -it --rm \\"
@@ -136,13 +136,13 @@ show_usage() {
     echo "       $IMAGE_NAME:$IMAGE_TAG"
     echo ""
     echo "  3. Access the container:"
-    echo "     docker exec -it agentic-base-container bash"
+    echo "     docker exec -it agentic-runtime-container bash"
     echo ""
     echo "  4. Access desktop environment:"
     echo "     VNC: localhost:5901 (password: ubuntu)"
     echo "     NoVNC: http://localhost:6080/vnc.html"
     echo ""
-    print_status "The base image includes:"
+    print_status "The runtime image includes:"
     echo "  - Ubuntu 24.04 LTS"
     echo "  - IceWM desktop environment"
     echo "  - VNC and NoVNC servers"
@@ -154,7 +154,7 @@ show_usage() {
 # Main execution
 main() {
     echo "========================================"
-    echo "Agentic Coding Pipeline - Base Container Build"
+    echo "Agentic Coding Pipeline - runtime Container Build"
     echo "========================================"
     echo ""
 
@@ -170,7 +170,7 @@ main() {
     show_usage
 
     # Start the container
-    ./run-base.sh
+    ./run-runtime.sh
 
     which say && say "Build completed"
 }

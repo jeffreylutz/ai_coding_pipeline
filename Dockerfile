@@ -780,6 +780,37 @@ RUN git config --global init.defaultBranch main \
     && git config --global core.editor "vim" \
     && git config --global pull.rebase false
 
+# Install Kiro CLI for ubuntu user (needs Node.js, so installed here after Node.js setup)
+RUN sudo -u ubuntu bash -c 'curl -fsSL https://cli.kiro.dev/install | bash' \
+    && apt-get install -f
+
+# Create Kiro wrapper script for container compatibility
+# Kiro is an Electron app and needs --no-sandbox to run in Docker
+RUN cat > /usr/local/bin/kiro-safe << 'EOF'
+#!/bin/bash
+# Kiro CLI launcher with container-safe flags
+# Disables sandboxing which is incompatible with Docker containers
+
+# Check if kiro is in user's local bin first, otherwise use system install
+if [ -f "$HOME/.local/bin/kiro" ]; then
+    KIRO_PATH="$HOME/.local/bin/kiro"
+elif [ -f "/usr/bin/kiro" ]; then
+    KIRO_PATH="/usr/bin/kiro"
+else
+    echo "Error: kiro not found in \$HOME/.local/bin or /usr/bin"
+    exit 1
+fi
+
+exec "$KIRO_PATH" \
+    --no-sandbox \
+    --disable-namespace-sandbox \
+    --disable-setuid-sandbox \
+    --disable-dev-shm-usage \
+    "$@"
+EOF
+
+RUN chmod +x /usr/local/bin/kiro-safe
+
 # =============================================================================
 # Stage 3: Base Container Image Integration
 # =============================================================================
@@ -828,11 +859,13 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install oh-my-zsh for enhanced shell experience
-RUN sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
+# Install oh-my-zsh for ubuntu user
+RUN sudo -u ubuntu sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
 
-# Configure shell enhancements for ubuntu user (skip for now to avoid user issues)
-# This will be configured later in the development_enhanced stage
+# Configure shell enhancements for ubuntu user
+# Add $HOME/.local/bin to PATH in .zshrc for Kiro CLI and other user-installed tools
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/ubuntu/.zshrc && \
+    chown ubuntu:ubuntu /home/ubuntu/.zshrc
 
 # Install additional Python packages for agentic coding (skip for now, will be done in development_enhanced stage)
 # RUN /home/$USERNAME/.venv/bin/pip install \
@@ -877,27 +910,6 @@ RUN npm install -g \
     concurrently \
     cross-env \
     dotenv-cli
-
-# Install Kiro CLI
-RUN curl -fsSL https://cli.kiro.dev/install | bash \
-    && apt-get install -f
-
-# Create Kiro wrapper script for container compatibility
-# Kiro is an Electron app and needs --no-sandbox to run in Docker
-RUN cat > /usr/local/bin/kiro-safe << 'EOF'
-#!/bin/bash
-# Kiro CLI launcher with container-safe flags
-# Disables sandboxing which is incompatible with Docker containers
-
-exec /usr/bin/kiro \
-    --no-sandbox \
-    --disable-namespace-sandbox \
-    --disable-setuid-sandbox \
-    --disable-dev-shm-usage \
-    "$@"
-EOF
-
-RUN chmod +x /usr/local/bin/kiro-safe
 
 # Install Auto-Claude Framework
 RUN cd /opt/pipelines && \

@@ -1,5 +1,5 @@
 #!/bin/bash
-# run-base.sh - Stop, remove, and start the Agentic Coding Pipeline base container
+# run-runtime.sh - Stop, remove, and start the Agentic Coding Pipeline runtime container
 set -e
 
 # Colors for output
@@ -10,14 +10,14 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Container configuration
-CONTAINER_NAME="agentic-base-container"
-IMAGE_NAME="agentic-coding-base:latest"
+CONTAINER_NAME="agentic-runtime-container"
+IMAGE_NAME="agentic-coding-runtime:latest"
 
 # Ensure workspace directory exists
 WORKSPACE_DIR="$(pwd)/workspace"
 mkdir -p "$WORKSPACE_DIR"
 
-echo -e "${BLUE}=== Agentic Coding Pipeline - Base Container Manager ===${NC}"
+echo -e "${BLUE}=== Agentic Coding Pipeline - runtime Container Manager ===${NC}"
 echo ""
 
 # Function to check if container exists
@@ -33,7 +33,7 @@ container_running() {
 # Check if image exists
 if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
     echo -e "${RED}Error: Image ${IMAGE_NAME} not found!${NC}"
-    echo -e "${YELLOW}Please build the base image first using: ./build-base.sh${NC}"
+    echo -e "${YELLOW}Please build the runtime image first using: ./build-runtime.sh${NC}"
     exit 1
 fi
 
@@ -56,15 +56,15 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}Starting new base container...${NC}"
+echo -e "${BLUE}Starting new runtime container...${NC}"
 echo ""
 
 # Start the container with docker run
 # Using --privileged for desktop environment capabilities
 # Start supervisord to manage VNC, NoVNC, and xRDP services
-docker run -d \
+docker run --rm -d \
     --name "${CONTAINER_NAME}" \
-    --hostname agentic-base \
+    --hostname agentic-runtime \
     -p 5901:5901 \
     -p 6080:6080 \
     -p 3389:3389 \
@@ -79,7 +79,7 @@ sleep 2
 # Check if container started successfully
 if container_running; then
     echo ""
-    echo -e "${GREEN}=== Base Container Started Successfully ===${NC}"
+    echo -e "${GREEN}=== runtime Container Started Successfully ===${NC}"
     echo ""
     echo "Container Name: ${CONTAINER_NAME}"
     echo "Image: ${IMAGE_NAME}"
@@ -98,7 +98,7 @@ if container_running; then
     echo "  Stop container:     docker stop ${CONTAINER_NAME}"
     echo "  Remove container:   docker rm -f ${CONTAINER_NAME}"
     echo ""
-    echo -e "${BLUE}What's Included in Base Image:${NC}"
+    echo -e "${BLUE}What's Included in runtime Image:${NC}"
     echo "  - Ubuntu 24.04 LTS"
     echo "  - IceWM desktop environment"
     echo "  - VNC and NoVNC servers"
@@ -120,4 +120,4 @@ else
     exit 1
 fi
 
-which say && say "Launched BASE image container"
+which say && say "Launched runtime image container"
