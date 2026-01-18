@@ -62,7 +62,7 @@ echo ""
 # Start the container with docker run
 # Using --privileged for desktop environment capabilities
 # Start supervisord to manage VNC, NoVNC, and xRDP services
-docker run --rm -d \
+docker run -d \
     --name "${CONTAINER_NAME}" \
     --hostname agentic-runtime \
     -p 5901:5901 \

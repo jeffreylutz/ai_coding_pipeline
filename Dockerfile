@@ -811,6 +811,14 @@ EOF
 
 RUN chmod +x /usr/local/bin/kiro-safe
 
+# Install oh-my-zsh for ubuntu user
+RUN sudo -u ubuntu sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
+
+# Configure shell enhancements for ubuntu user
+# Add $HOME/.local/bin to PATH in .zshrc for Kiro CLI and other user-installed tools
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/ubuntu/.zshrc && \
+    chown ubuntu:ubuntu /home/ubuntu/.zshrc
+
 # =============================================================================
 # Stage 3: Base Container Image Integration
 # =============================================================================
@@ -858,14 +866,6 @@ RUN apt-get update && \
     (apt-get install -y postgresql-client mysql-client redis-tools || echo "Some database clients failed to install, continuing...") && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# Install oh-my-zsh for ubuntu user
-RUN sudo -u ubuntu sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
-
-# Configure shell enhancements for ubuntu user
-# Add $HOME/.local/bin to PATH in .zshrc for Kiro CLI and other user-installed tools
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/ubuntu/.zshrc && \
-    chown ubuntu:ubuntu /home/ubuntu/.zshrc
 
 # Install additional Python packages for agentic coding (skip for now, will be done in development_enhanced stage)
 # RUN /home/$USERNAME/.venv/bin/pip install \
