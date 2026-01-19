@@ -12,28 +12,19 @@ ENV TZ=America/Detroit
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
-# Configure timezone non-interactively
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
 # Create non-root user for development
 ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
-# Create user first (before package installations)
-RUN apt-get update \
-     && apt-get install -y sudo \
-     && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
-     && chmod 0440 /etc/sudoers.d/ubuntu \
-     && echo 'ubuntu:ubuntu' | chpasswd
-    
-# RUN groupadd --gid 1000 ubuntu 2>/dev/null || groupmod -g 1000 ubuntu 2>/dev/null || true \
-#     && useradd --uid 1000 --gid 1000 -m ubuntu 2>/dev/null || usermod -u 1000 -g 1000 ubuntu 2>/dev/null || true \
-#     && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
-#     && chmod 0440 /etc/sudoers.d/ubuntu
-
-# Update system and install all essential packages in one layer
-RUN apt-get update && apt-get install -y \
+# System initialization: timezone, user creation, essential packages
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
+    && apt-get update \
+    && apt-get install -y sudo \
+    && echo ubuntu ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/ubuntu \
+    && chmod 0440 /etc/sudoers.d/ubuntu \
+    && echo 'ubuntu:ubuntu' | chpasswd \
+    && apt-get install -y \
     # Essential system tools
     curl \
     wget \
@@ -62,8 +53,6 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     # Process management
     supervisor \
-    sudo \
-    # Clean up
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -71,66 +60,87 @@ RUN apt-get update && apt-get install -y \
 # Desktop Environment Setup - IceWM Desktop with NoVNC
 # =============================================================================
 
-# Add Mozilla Team PPA for proper Firefox installation (not snap)
+# Install desktop environment: IceWM, VNC, xRDP, browsers
 RUN add-apt-repository -y ppa:mozillateam/ppa \
     && echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001' | tee /etc/apt/preferences.d/mozilla-firefox \
-    && echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:${distro_codename}";' | tee /etc/apt/apt.conf.d/51unattended-upgrades-firefox
-
-# Install IceWM Desktop, NoVNC, and all dependencies in one layer
-# Using IceWM instead of GNOME for container compatibility (no systemd required)
-RUN apt-get update && apt-get install -y \
-    # Window manager and desktop components \
+    && echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:${distro_codename}";' | tee /etc/apt/apt.conf.d/51unattended-upgrades-firefox \
+    && apt-get update && apt-get install -y \
+    # Window manager and desktop components
     icewm \
     icewm-common \
     xterm \
     gnome-terminal \
     nautilus \
-    # Display server \
+    # Display server
     xorg \
     dbus-x11 \
     x11-xserver-utils \
     x11-utils \
-    # VNC server \
+    # VNC server
     tigervnc-standalone-server \
     tigervnc-common \
-    # NoVNC and dependencies \
+    # NoVNC and dependencies
     python3-numpy \
     novnc \
     websockify \
-    # RDP server (xrdp) \
+    # RDP server (xrdp)
     xrdp \
     xorgxrdp \
-    # Fonts and rendering \
+    # Fonts and rendering
     fonts-liberation \
     fonts-dejavu \
     fonts-noto \
-    # Audio support \
+    # Audio support
     pulseaudio \
-    # Web browser \
+    # Web browser
     firefox \
-    # Additional utilities \
+    # Additional utilities
     xdotool \
     wmctrl \
     menu \
+    && wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/google-chrome.deb \
+    && apt-get install -y /tmp/google-chrome.deb \
+    && rm /tmp/google-chrome.deb \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Google Chrome
-RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/google-chrome.deb && \
-    apt-get update && \
-    apt-get install -y /tmp/google-chrome.deb && \
-    rm /tmp/google-chrome.deb && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Configure VNC, xRDP, and create all control scripts
+RUN mkdir -p /home/ubuntu/.vnc /var/log/supervisor /etc/supervisor/conf.d \
+    && echo "ubuntu" | vncpasswd -f > /home/ubuntu/.vnc/passwd \
+    && chmod 600 /home/ubuntu/.vnc/passwd \
+    && chown -R ubuntu:ubuntu /home/ubuntu/.vnc \
+    && chmod 755 /var/log/supervisor \
+    && usermod -a -G root ubuntu \
+    && adduser ubuntu ssl-cert \
+    && mkdir -p /var/run/xrdp \
+    && chown xrdp:xrdp /var/run/xrdp \
+    && chmod 755 /var/run/xrdp \
+    && sed -i 's/^port=.*/port=3389/' /etc/xrdp/xrdp.ini \
+    && sed -i '/^\[Xorg\]/,/^\[/{s/port=3389/port=-1/}' /etc/xrdp/xrdp.ini \
+    && sed -i '/^\[Xvnc\]/,/^\[vnc-any\]/{/^\[vnc-any\]/!d;}' /etc/xrdp/xrdp.ini \
+    && sed -i 's/^AllowRootLogin=.*/AllowRootLogin=false/' /etc/xrdp/sesman.ini \
+    && sed -i 's/^MaxSessions=.*/MaxSessions=10/' /etc/xrdp/sesman.ini \
+    && (sed -i 's/^EnableUserWindowManager=.*/EnableUserWindowManager=true/' /etc/xrdp/sesman.ini || \
+     echo "EnableUserWindowManager=true" >> /etc/xrdp/sesman.ini)
 
-# Configure VNC for ubuntu user
-RUN mkdir -p /home/ubuntu/.vnc && \
-    echo "ubuntu" | vncpasswd -f > /home/ubuntu/.vnc/passwd && \
-    chmod 600 /home/ubuntu/.vnc/passwd && \
-    chown -R ubuntu:ubuntu /home/ubuntu/.vnc
-
-# Create VNC xstartup script for IceWM
-RUN cat > /home/ubuntu/.vnc/xstartup << 'EOF'
+# Create all configuration files and scripts in a single layer
+RUN cat > /home/ubuntu/.vnc/xstartup << 'EOF' && chmod +x /home/ubuntu/.vnc/xstartup && chown ubuntu:ubuntu /home/ubuntu/.vnc/xstartup \
+    && cat > /home/ubuntu/.vnc/config << 'EOFCONFIG' && chown ubuntu:ubuntu /home/ubuntu/.vnc/config \
+    && cat > /home/ubuntu/.xsession << 'EOFXSESSION' && chmod +x /home/ubuntu/.xsession && chown ubuntu:ubuntu /home/ubuntu/.xsession \
+    && cat > /etc/xrdp/startwm.sh << 'EOFSTARTWM' && chmod +x /etc/xrdp/startwm.sh \
+    && cat > /etc/xrdp/xorg.conf << 'EOFXORG' \
+    && cat > /usr/local/bin/start-vnc.sh << 'EOFSTARTVNC' && chmod +x /usr/local/bin/start-vnc.sh \
+    && cat > /usr/local/bin/stop-vnc.sh << 'EOFSTOPVNC' && chmod +x /usr/local/bin/stop-vnc.sh \
+    && cat > /usr/local/bin/vnc-ctl << 'EOFVNCCTL' && chmod +x /usr/local/bin/vnc-ctl \
+    && cat > /usr/local/bin/desktop-status.sh << 'EOFDESKTOP' && chmod +x /usr/local/bin/desktop-status.sh \
+    && cat > /usr/local/bin/start-firefox << 'EOFFIREFOX' && chmod +x /usr/local/bin/start-firefox \
+    && cat > /usr/local/bin/start-chrome << 'EOFCHROME' && chmod +x /usr/local/bin/start-chrome \
+    && cat > /usr/local/bin/xrdp-ctl << 'EOFXRDPCTL' && chmod +x /usr/local/bin/xrdp-ctl \
+    && cat > /usr/local/bin/vncserver-supervisor.sh << 'EOFVNCSUPER' && chmod +x /usr/local/bin/vncserver-supervisor.sh \
+    && cat > /etc/supervisor/supervisord.conf << 'EOFSUPERVISORD' \
+    && cat > /etc/supervisor/conf.d/vncserver.conf << 'EOFCONFVNC' \
+    && cat > /etc/supervisor/conf.d/novnc.conf << 'EOFCONFNOVNC' \
+    && cat > /etc/supervisor/conf.d/xrdp.conf << 'EOFCONFXRDP'
 #!/bin/bash
 # Lightweight VNC session with IceWM (container-friendly, no systemd required)
 
@@ -154,26 +164,12 @@ gnome-terminal &
 # Start IceWM window manager (lightweight and container-friendly)
 exec icewm-session
 EOF
-RUN chmod +x /home/ubuntu/.vnc/xstartup && chown ubuntu:ubuntu /home/ubuntu/.vnc/xstartup
-
-# Create VNC configuration file
-RUN cat > /home/ubuntu/.vnc/config << 'EOF'
-# VNC Configuration
 geometry=1920x1080
 dpi=96
 depth=24
 localhost=no
 alwaysshared
-EOF
-
-RUN chown ubuntu:ubuntu /home/ubuntu/.vnc/config
-
-# =============================================================================
-# Configure xrdp for Remote Desktop Protocol (RDP) access
-# =============================================================================
-
-# Configure xrdp to use IceWM
-RUN cat > /home/ubuntu/.xsession << 'EOF'
+EOFCONFIG
 #!/bin/bash
 # xRDP session startup script for IceWM
 
@@ -196,32 +192,7 @@ gnome-terminal &
 
 # Start IceWM window manager
 exec icewm-session
-EOF
-RUN chmod +x /home/ubuntu/.xsession &&  chown ubuntu:ubuntu /home/ubuntu/.xsession
-
-
-# Configure xrdp settings
-# Configure xrdp settings
-RUN sed -i 's/^port=.*/port=3389/' /etc/xrdp/xrdp.ini && \
-    sed -i '/^\[Xorg\]/,/^\[/{s/port=3389/port=-1/}' /etc/xrdp/xrdp.ini && \
-    sed -i '/^\[Xvnc\]/,/^\[vnc-any\]/{/^\[vnc-any\]/!d;}' /etc/xrdp/xrdp.ini
-
-# Configure the existing [Xorg] section properly
-# The default xrdp.ini already has an [Xorg] section, we need to fix its port
-# Configure xrdp settings
-RUN sed -i 's/^port=.*/port=3389/' /etc/xrdp/xrdp.ini && \
-    sed -i '/^\[Xorg\]/,/^\[/{s/port=3389/port=-1/}' /etc/xrdp/xrdp.ini && \
-    sed -i '/^\[Xvnc\]/,/^\[vnc-any\]/{/^\[vnc-any\]/!d;}' /etc/xrdp/xrdp.ini
-
-# Completely remove the Xvnc section to avoid conflicts
-# Delete from [Xvnc] to the line before the next section [vnc-any]
-# Configure xrdp settings
-RUN sed -i 's/^port=.*/port=3389/' /etc/xrdp/xrdp.ini && \
-    sed -i '/^\[Xorg\]/,/^\[/{s/port=3389/port=-1/}' /etc/xrdp/xrdp.ini && \
-    sed -i '/^\[Xvnc\]/,/^\[vnc-any\]/{/^\[vnc-any\]/!d;}' /etc/xrdp/xrdp.ini
-
-# Set xrdp to use the xsession script
-RUN cat > /etc/xrdp/startwm.sh << 'EOF'
+EOFXSESSION
 #!/bin/bash
 # xrdp startwm script
 
@@ -253,27 +224,7 @@ else
     echo "No .xsession found, starting icewm-session"
     exec icewm-session
 fi
-EOF
-RUN chmod +x /etc/xrdp/startwm.sh
-
-
-
-# Allow ubuntu user to run xrdp
-RUN adduser ubuntu ssl-cert
-
-# Configure xrdp sesman to allow connections
-RUN sed -i 's/^AllowRootLogin=.*/AllowRootLogin=false/' /etc/xrdp/sesman.ini && \
-    sed -i 's/^MaxSessions=.*/MaxSessions=10/' /etc/xrdp/sesman.ini && \
-    sed -i 's/^EnableUserWindowManager=.*/EnableUserWindowManager=true/' /etc/xrdp/sesman.ini || \
-    echo "EnableUserWindowManager=true" >> /etc/xrdp/sesman.ini
-
-# Ensure xrdp can write to required directories
-RUN mkdir -p /var/run/xrdp && \
-    chown xrdp:xrdp /var/run/xrdp && \
-    chmod 755 /var/run/xrdp
-
-# Create xorg.conf for xrdp
-RUN cat > /etc/xrdp/xorg.conf << 'EOF'
+EOFSTARTWM
 Section "ServerLayout"
     Identifier     "X.org Configured"
     Screen      0  "Screen0" 0 0
@@ -342,10 +293,7 @@ Section "Screen"
         Modes "1920x1080" "1680x1050" "1600x900" "1440x900" "1366x768" "1280x1024" "1280x800" "1024x768"
     EndSubSection
 EndSection
-EOF
-
-# Create startup script for VNC and NoVNC (now uses Supervisor)
-RUN cat > /usr/local/bin/start-vnc.sh << 'EOF'
+EOFXORG
 #!/bin/bash
 # Start VNC desktop services via Supervisor
 
@@ -380,13 +328,7 @@ echo "VNC password: ubuntu"
 echo ""
 echo "To check status: desktop-status.sh"
 echo "To manage services: supervisorctl status|start|stop|restart <service>"
-EOF
-RUN chmod +x /usr/local/bin/start-vnc.sh
-
-
-
-# Create stop script for VNC and NoVNC
-RUN cat > /usr/local/bin/stop-vnc.sh << 'EOF'
+EOFSTARTVNC
 #!/bin/bash
 # Stop VNC desktop services via Supervisor
 
@@ -405,13 +347,7 @@ supervisorctl status vncserver novnc
 echo ""
 echo "Desktop services stopped!"
 echo "To restart: start-vnc.sh"
-EOF
-RUN chmod +x /usr/local/bin/stop-vnc.sh
-
-
-
-# Create supervisor management helper
-RUN cat > /usr/local/bin/vnc-ctl << 'EOF'
+EOFSTOPVNC
 #!/bin/bash
 # VNC Service Control Helper
 
@@ -462,13 +398,7 @@ case "$1" in
         exit 1
         ;;
 esac
-EOF
-RUN chmod +x /usr/local/bin/vnc-ctl
-
-
-
-# Create desktop environment check script
-RUN cat > /usr/local/bin/desktop-status.sh << 'EOF'
+EOFVNCCTL
 #!/bin/bash
 
 echo "=== Desktop Environment Status ==="
@@ -516,36 +446,18 @@ echo ""
 echo "To start desktop environment: start-vnc.sh"
 echo "To stop VNC: vncserver -kill :1"
 echo "To manage xRDP: xrdp-ctl {status|start|stop|restart}"
-EOF
-RUN chmod +x /usr/local/bin/desktop-status.sh
-
-
-
-# Create Firefox launcher script
-RUN cat > /usr/local/bin/start-firefox << 'EOF'
+EOFDESKTOP
 #!/bin/bash
 # Launch Firefox browser
 export DISPLAY=:1
 firefox "$@" &
-EOF
-RUN chmod +x /usr/local/bin/start-firefox
-
-
-
-# Create Google Chrome launcher script
-RUN cat > /usr/local/bin/start-chrome << 'EOF'
+EOFFIREFOX
 #!/bin/bash
 # Launch Google Chrome browser
 export DISPLAY=:1
 # Run Chrome with --no-sandbox flag for container compatibility
 google-chrome --no-sandbox "$@" &
-EOF
-RUN chmod +x /usr/local/bin/start-chrome
-
-
-
-# Create xRDP control script
-RUN cat > /usr/local/bin/xrdp-ctl << 'EOF'
+EOFCHROME
 #!/bin/bash
 # xRDP Service Control Helper
 
@@ -612,72 +524,7 @@ case "$1" in
         exit 1
         ;;
 esac
-EOF
-RUN chmod +x /usr/local/bin/xrdp-ctl
-
-
-
-# Configure Supervisor to manage VNC and NoVNC services
-RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d && \
-    chmod 755 /var/log/supervisor
-
-# Create supervisor configuration for VNC server
-RUN cat > /etc/supervisor/conf.d/vncserver.conf << 'EOF'
-[program:vncserver]
-command=/usr/local/bin/vncserver-supervisor.sh
-user=ubuntu
-autostart=true
-autorestart=true
-startsecs=5
-startretries=3
-stdout_logfile=/var/log/supervisor/vncserver.log
-stderr_logfile=/var/log/supervisor/vncserver.err
-priority=10
-EOF
-
-# Create supervisor configuration for NoVNC
-RUN cat > /etc/supervisor/conf.d/novnc.conf << 'EOF'
-[program:novnc]
-command=/usr/bin/websockify --web=/usr/share/novnc 6080 localhost:5901
-user=ubuntu
-autostart=true
-autorestart=true
-startsecs=5
-startretries=3
-stdout_logfile=/var/log/supervisor/novnc.log
-stderr_logfile=/var/log/supervisor/novnc.err
-priority=20
-depends_on=vncserver
-EOF
-
-# Create supervisor configuration for xrdp
-RUN cat > /etc/supervisor/conf.d/xrdp.conf << 'EOF'
-[program:xrdp-sesman]
-command=/usr/sbin/xrdp-sesman --nodaemon
-user=root
-autostart=true
-autorestart=true
-startsecs=5
-startretries=3
-stdout_logfile=/var/log/supervisor/xrdp-sesman.log
-stderr_logfile=/var/log/supervisor/xrdp-sesman.err
-priority=15
-
-[program:xrdp]
-command=/usr/sbin/xrdp --nodaemon
-user=root
-autostart=true
-autorestart=true
-startsecs=5
-startretries=3
-stdout_logfile=/var/log/supervisor/xrdp.log
-stderr_logfile=/var/log/supervisor/xrdp.err
-priority=16
-depends_on=xrdp-sesman
-EOF
-
-# Create VNC startup wrapper script for supervisor
-RUN cat > /usr/local/bin/vncserver-supervisor.sh << 'EOF'
+EOFXRDPCTL
 #!/bin/bash
 # VNC Server startup script for Supervisor
 set -e
@@ -717,13 +564,7 @@ DISPLAY=:1 /home/ubuntu/.vnc/xstartup &
 
 # Wait for Xvnc process (this keeps supervisor happy)
 wait $XVNC_PID
-EOF
-RUN chmod +x /usr/local/bin/vncserver-supervisor.sh
-
-
-
-# Create main supervisor configuration
-RUN cat > /etc/supervisor/supervisord.conf << 'EOF'
+EOFVNCSUPER
 [supervisord]
 nodaemon=true
 logfile=/var/log/supervisor/supervisord.log
@@ -743,117 +584,108 @@ serverurl=unix:///var/run/supervisor.sock
 
 [include]
 files = /etc/supervisor/conf.d/*.conf
-EOF
+EOFSUPERVISORD
+[program:vncserver]
+command=/usr/local/bin/vncserver-supervisor.sh
+user=ubuntu
+autostart=true
+autorestart=true
+startsecs=5
+startretries=3
+stdout_logfile=/var/log/supervisor/vncserver.log
+stderr_logfile=/var/log/supervisor/vncserver.err
+priority=10
+EOFCONFVNC
+[program:novnc]
+command=/usr/bin/websockify --web=/usr/share/novnc 6080 localhost:5901
+user=ubuntu
+autostart=true
+autorestart=true
+startsecs=5
+startretries=3
+stdout_logfile=/var/log/supervisor/novnc.log
+stderr_logfile=/var/log/supervisor/novnc.err
+priority=20
+depends_on=vncserver
+EOFCONFNOVNC
+[program:xrdp-sesman]
+command=/usr/sbin/xrdp-sesman --nodaemon
+user=root
+autostart=true
+autorestart=true
+startsecs=5
+startretries=3
+stdout_logfile=/var/log/supervisor/xrdp-sesman.log
+stderr_logfile=/var/log/supervisor/xrdp-sesman.err
+priority=15
 
-# Add ubuntu user to root group so they can access supervisor socket
-RUN usermod -a -G root ubuntu
+[program:xrdp]
+command=/usr/sbin/xrdp --nodaemon
+user=root
+autostart=true
+autorestart=true
+startsecs=5
+startretries=3
+stdout_logfile=/var/log/supervisor/xrdp.log
+stderr_logfile=/var/log/supervisor/xrdp.err
+priority=16
+depends_on=xrdp-sesman
+EOFCONFXRDP
 
 # =============================================================================
 # Stage 2: Runtime Environments
 # =============================================================================
 FROM base AS runtime
 
-# Install Node.js 18+ (LTS)
+# Install all runtime environments: Node.js, Python, Docker, zsh, and configure Git
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g npm@latest \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python 3.12+ and pip
-RUN apt-get update && apt-get install -y \
+    && apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
     python3-dev \
     python3-setuptools \
     python3-wheel \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create symlinks for python and pip
-RUN ln -sf /usr/bin/python3 /usr/bin/python \
-    && ln -sf /usr/bin/pip3 /usr/bin/pip
-
-# Install Docker (for Docker-in-Docker support)
-RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    zsh \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && ln -sf /usr/bin/pip3 /usr/bin/pip \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get update \
-    && apt-get install -y docker-ce docker-ce-cli containerd.io docker compose-plugin \
+    && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin \
     && usermod -aG docker $USERNAME 2>/dev/null || true \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Configure Git with default settings
-RUN git config --global init.defaultBranch main \
+    && usermod -s /usr/bin/zsh ubuntu \
+    && git config --global init.defaultBranch main \
     && git config --global user.name "Developer" \
     && git config --global user.email "developer@localhost" \
     && git config --global core.editor "vim" \
-    && git config --global pull.rebase false
-
-# Install zsh shell (required for oh-my-zsh)
-RUN apt-get update && apt-get install -y \
-    zsh \
+    && git config --global pull.rebase false \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Set zsh as default shell for ubuntu user
-RUN usermod -s /usr/bin/zsh ubuntu
-
-# Install Kiro CLI for ubuntu user (needs Node.js, so installed here after Node.js setup)
+# Install and configure Kiro (CLI + IDE with wrapper scripts)
 RUN sudo -u ubuntu bash -c 'curl -fsSL https://cli.kiro.dev/install | bash' \
-    && apt-get install -f
-
-# Create Kiro wrapper script for container compatibility
-# Kiro is an Electron app and needs --no-sandbox to run in Docker
-RUN cat > /usr/local/bin/kiro-safe << 'EOF'
-#!/bin/bash
-# Kiro CLI launcher with container-safe flags
-# Disables sandboxing which is incompatible with Docker containers
-
-# Check if kiro is in user's local bin first, otherwise use system install
-if [ -f "$HOME/.local/bin/kiro" ]; then
-    KIRO_PATH="$HOME/.local/bin/kiro"
-elif [ -f "/usr/bin/kiro" ]; then
-    KIRO_PATH="/usr/bin/kiro"
-else
-    echo "Error: kiro not found in \$HOME/.local/bin or /usr/bin"
-    exit 1
-fi
-
-exec "$KIRO_PATH" \
-    --no-sandbox \
-    --disable-dev-shm-usage \
-    "$@"
-EOF
-RUN chmod +x /usr/local/bin/kiro-safe
-
-
-
-# Install Kiro IDE (desktop application)
-# Dynamically fetch latest .deb download URL from Kiro's metadata
-RUN KIRO_METADATA_URL="https://prod.download.desktop.kiro.dev/stable/metadata-linux-x64-deb-stable.json" && \
-    echo "Fetching Kiro IDE metadata..." && \
-    METADATA=$(curl -fsSL "$KIRO_METADATA_URL") && \
-    echo "Metadata received, parsing download URL..." && \
-    KIRO_DEB_URL=$(echo "$METADATA" | jq -r '.releases[].updateTo.url | select(endswith(".deb"))' | head -n1) && \
-    if [ -z "$KIRO_DEB_URL" ] || [ "$KIRO_DEB_URL" = "null" ]; then \
+    && apt-get install -f \
+    && cat > /usr/local/bin/kiro-safe << 'EOFKIROSAFE' && chmod +x /usr/local/bin/kiro-safe \
+    && KIRO_METADATA_URL="https://prod.download.desktop.kiro.dev/stable/metadata-linux-x64-deb-stable.json" \
+    && echo "Fetching Kiro IDE metadata..." \
+    && METADATA=$(curl -fsSL "$KIRO_METADATA_URL") \
+    && echo "Metadata received, parsing download URL..." \
+    && KIRO_DEB_URL=$(echo "$METADATA" | jq -r '.releases[].updateTo.url | select(endswith(".deb"))' | head -n1) \
+    && if [ -z "$KIRO_DEB_URL" ] || [ "$KIRO_DEB_URL" = "null" ]; then \
         echo "ERROR: Could not parse download URL from metadata. Metadata contents:"; \
         echo "$METADATA" | jq '.' || echo "$METADATA"; \
         exit 1; \
-    fi && \
-    echo "Downloading Kiro IDE from: $KIRO_DEB_URL" && \
-    curl -fsSL "$KIRO_DEB_URL" -o /tmp/kiro-ide.deb && \
-    echo "Installing Kiro IDE..." && \
-    apt-get update && \
-    apt-get install -y /tmp/kiro-ide.deb && \
-    rm /tmp/kiro-ide.deb && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Wrap Kiro IDE binary with container-safe flags
-# Find the installed kiro binary and rename it, then create wrapper
-RUN if [ -f "/opt/Kiro/kiro" ]; then \
+    fi \
+    && echo "Downloading Kiro IDE from: $KIRO_DEB_URL" \
+    && curl -fsSL "$KIRO_DEB_URL" -o /tmp/kiro-ide.deb \
+    && echo "Installing Kiro IDE..." \
+    && apt-get update \
+    && apt-get install -y /tmp/kiro-ide.deb \
+    && rm /tmp/kiro-ide.deb \
+    && if [ -f "/opt/Kiro/kiro" ]; then \
         KIRO_BIN="/opt/Kiro/kiro"; \
     elif [ -f "/usr/bin/kiro" ]; then \
         KIRO_BIN="/usr/bin/kiro"; \
@@ -862,10 +694,10 @@ RUN if [ -f "/opt/Kiro/kiro" ]; then \
     else \
         echo "ERROR: Could not find Kiro IDE binary"; \
         exit 1; \
-    fi && \
-    echo "Found Kiro IDE at: $KIRO_BIN" && \
-    mv "$KIRO_BIN" "${KIRO_BIN}.bin" && \
-    printf '%s\n' '#!/bin/bash' \
+    fi \
+    && echo "Found Kiro IDE at: $KIRO_BIN" \
+    && mv "$KIRO_BIN" "${KIRO_BIN}.bin" \
+    && printf '%s\n' '#!/bin/bash' \
         '# Kiro IDE wrapper for container compatibility' \
         '# Automatically adds flags to disable sandboxing and reads config from environment variables' \
         '' \
@@ -911,19 +743,35 @@ RUN if [ -f "/opt/Kiro/kiro" ]; then \
         '' \
         '# Launch with all flags and user arguments' \
         'exec "$KIRO_REAL" "${KIRO_ARGS[@]}" "$@"' \
-        > "$KIRO_BIN" && \
-    chmod +x "$KIRO_BIN"
+        > "$KIRO_BIN" \
+    && chmod +x "$KIRO_BIN" \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+#!/bin/bash
+# Kiro CLI launcher with container-safe flags
+# Disables sandboxing which is incompatible with Docker containers
 
-# Install oh-my-zsh for ubuntu user
-RUN sudo -u ubuntu sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
+# Check if kiro is in user's local bin first, otherwise use system install
+if [ -f "$HOME/.local/bin/kiro" ]; then
+    KIRO_PATH="$HOME/.local/bin/kiro"
+elif [ -f "/usr/bin/kiro" ]; then
+    KIRO_PATH="/usr/bin/kiro"
+else
+    echo "Error: kiro not found in \$HOME/.local/bin or /usr/bin"
+    exit 1
+fi
 
-# Configure shell enhancements for ubuntu user
-# Add $HOME/.local/bin to PATH in .zshrc for Kiro CLI and other user-installed tools
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/ubuntu/.zshrc && \
-    chown ubuntu:ubuntu /home/ubuntu/.zshrc
+exec "$KIRO_PATH" \
+    --no-sandbox \
+    --disable-dev-shm-usage \
+    "$@"
+EOFKIROSAFE
 
-# Set Firefox as default browser for ubuntu user
-RUN sudo -u ubuntu xdg-settings set default-web-browser firefox.desktop
+# Configure shell: install oh-my-zsh, setup PATH, set default browser
+RUN sudo -u ubuntu sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true \
+    && echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/ubuntu/.zshrc \
+    && chown ubuntu:ubuntu /home/ubuntu/.zshrc \
+    && sudo -u ubuntu xdg-settings set default-web-browser firefox.desktop
 
 # =============================================================================
 # Stage 3: Base Container Image Integration
