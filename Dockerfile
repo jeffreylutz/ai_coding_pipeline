@@ -821,33 +821,6 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install additional Python packages for agentic coding (skip for now, will be done in development_enhanced stage)
-# RUN /home/$USERNAME/.venv/bin/pip install \
-#     # AI and ML libraries \
-#     langchain \
-#     langchain-community \
-#     langchain-openai \
-#     langchain-anthropic \
-#     chromadb \
-#     faiss-cpu \
-#     sentence-transformers \
-#     # API and web frameworks \
-#     flask \
-#     django \
-#     starlette \
-#     # Data processing \
-#     sqlalchemy \
-#     alembic \
-#     redis \
-#     celery \
-#     # Development tools \
-#     pre-commit \
-#     bandit \
-#     safety \
-#     # Documentation \
-#     mkdocs \
-#     sphinx
-
 # Install additional Node.js packages for agentic development
 RUN npm install -g \
     # API development \
@@ -1060,42 +1033,6 @@ USER root
 
 # Create startup script with executable permissions (using --chmod to avoid additional RUN layer)
 COPY --chmod=755 scripts/base-container-setup.sh /usr/local/bin/base-container-setup.sh
-
-# Fix: Create symlinks for agentic commands in system path
-# Commented out due to Docker overlay filesystem depth limit - run manually at container startup if needed
-# RUN if [ -f /home/ubuntu/.local/bin/agentic-status ]; then \
-#         ln -s /home/ubuntu/.local/bin/agentic-status /usr/local/bin/agentic-status && \
-#         ln -s /home/ubuntu/.local/bin/init-project /usr/local/bin/init-project && \
-#         chmod +x /usr/local/bin/agentic-status && \
-#         chmod +x /usr/local/bin/init-project; \
-#     fi
-
-# Fix: Ensure all startup scripts exit cleanly and handle missing venv
-# Commented out due to Docker overlay filesystem depth limit - run manually at container startup if needed
-# RUN for script in /opt/pipelines/*/start-*.sh /opt/tools/*/start-*.sh; do \
-#         if [ -f "$script" ]; then \
-#             # Make venv activation conditional \
-#             sed -i 's|^source /home/ubuntu/.venv/bin/activate|if [ -f /home/ubuntu/.venv/bin/activate ]; then source /home/ubuntu/.venv/bin/activate; else echo "Warning: venv not found, using system Python"; fi|g' "$script" && \
-#             # Ensure script exits 0 \
-#             if ! grep -q "^exit 0" "$script"; then \
-#                 echo "" >> "$script" && \
-#                 echo "exit 0" >> "$script"; \
-#             fi \
-#         fi \
-#     done
-
-# Ensure Git is configured for ubuntu user
-# Commented out due to Docker overlay filesystem depth limit - run manually at container startup if needed
-# RUN sudo -u ubuntu git config --global init.defaultBranch main && \
-#     sudo -u ubuntu git config --global user.name "Agentic ubuntu" && \
-#     sudo -u ubuntu git config --global user.email "ubuntu@agentic-coding.local" && \
-#     sudo -u ubuntu git config --global core.editor "vim" && \
-#     sudo -u ubuntu git config --global pull.rebase false && \
-#     chown ubuntu:ubuntu /home/ubuntu/.gitconfig 2>/dev/null || true
-
-# Note: Due to Docker overlay filesystem depth limits, this Dockerfile cannot add any more layers
-# Container is functional but some configuration must be done at runtime
-# Use: docker run -it agentic-coding-pipeline:latest /bin/bash
 
 # Metadata only - does not create layers
 LABEL maintainer="Agentic Coding Pipeline" \
