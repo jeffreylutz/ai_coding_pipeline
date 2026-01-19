@@ -841,25 +841,39 @@ RUN KIRO_METADATA_URL="https://prod.download.desktop.kiro.dev/stable/metadata-li
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create Kiro IDE wrapper script for container compatibility
-RUN cat > /usr/local/bin/kiro-ide-safe << 'EOF'
+# Wrap Kiro IDE binary with container-safe flags
+# Find the installed kiro binary and rename it, then create wrapper
+RUN if [ -f "/opt/Kiro/kiro" ]; then \
+        KIRO_BIN="/opt/Kiro/kiro"; \
+    elif [ -f "/usr/bin/kiro" ]; then \
+        KIRO_BIN="/usr/bin/kiro"; \
+    elif [ -f "/usr/local/bin/kiro" ]; then \
+        KIRO_BIN="/usr/local/bin/kiro"; \
+    else \
+        echo "ERROR: Could not find Kiro IDE binary"; \
+        exit 1; \
+    fi && \
+    echo "Found Kiro IDE at: $KIRO_BIN" && \
+    mv "$KIRO_BIN" "${KIRO_BIN}.bin" && \
+    cat > "$KIRO_BIN" << 'EOF'
 #!/bin/bash
-# Kiro IDE launcher with container-safe flags
-# Disables sandboxing which is incompatible with Docker containers
+# Kiro IDE wrapper for container compatibility
+# Automatically adds flags to disable sandboxing
 
+# Set DISPLAY if not already set
 export DISPLAY=${DISPLAY:-:1}
 
-# Find Kiro IDE binary
-if [ -f "/opt/Kiro/kiro" ]; then
-    KIRO_IDE_PATH="/opt/Kiro/kiro"
-elif [ -f "/usr/bin/kiro" ]; then
-    KIRO_IDE_PATH="/usr/bin/kiro"
-else
-    echo "Error: Kiro IDE not found"
+# Find the real Kiro binary
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+KIRO_REAL="${SCRIPT_DIR}/$(basename "$0").bin"
+
+if [ ! -f "$KIRO_REAL" ]; then
+    echo "Error: Kiro IDE binary not found at $KIRO_REAL"
     exit 1
 fi
 
-exec "$KIRO_IDE_PATH" \
+# Launch with container-safe flags
+exec "$KIRO_REAL" \
     --no-sandbox \
     --disable-namespace-sandbox \
     --disable-setuid-sandbox \
@@ -867,8 +881,7 @@ exec "$KIRO_IDE_PATH" \
     --disable-gpu \
     "$@"
 EOF
-
-RUN chmod +x /usr/local/bin/kiro-ide-safe
+    chmod +x "$KIRO_BIN"
 
 # Install oh-my-zsh for ubuntu user
 RUN sudo -u ubuntu sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
