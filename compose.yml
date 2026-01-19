@@ -3,8 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: agentic-coding-pipeline:latest
-    container_name: agentic-coding-container
+      target: ${BUILD_TARGET:-final}
+    image: ${IMAGE_NAME:-agentic-coding-pipeline:latest}
+    container_name: ${CONTAINER_NAME:-agentic-coding-container}
     
     # Enable Docker-in-Docker
     privileged: true
@@ -37,13 +38,16 @@ services:
       - VNC_RESOLUTION=1920x1080
       - VNC_DEPTH=24
     
-    # Working directory
-    working_dir: /workspace
-    
+    # Working directory (can be overridden with WORKDIR env var)
+    working_dir: ${WORKDIR:-/workspace}
+
+    # Command to run (can be overridden with COMPOSE_COMMAND env var)
+    command: ${COMPOSE_COMMAND:-/usr/local/bin/start-container.sh}
+
     # Keep container running
     tty: true
     stdin_open: true
-    
+
     # Restart policy
     restart: unless-stopped
     
