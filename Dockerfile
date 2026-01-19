@@ -820,6 +820,56 @@ EOF
 
 RUN chmod +x /usr/local/bin/kiro-safe
 
+# Install Kiro IDE (desktop application)
+# Dynamically fetch latest .deb download URL from Kiro's metadata
+RUN KIRO_METADATA_URL="https://prod.download.desktop.kiro.dev/stable/metadata-linux-x64-deb-stable.json" && \
+    echo "Fetching Kiro IDE metadata..." && \
+    METADATA=$(curl -fsSL "$KIRO_METADATA_URL") && \
+    echo "Metadata received, parsing download URL..." && \
+    KIRO_DEB_URL=$(echo "$METADATA" | jq -r '.releases[].updateTo.url | select(endswith(".deb"))' | head -n1) && \
+    if [ -z "$KIRO_DEB_URL" ] || [ "$KIRO_DEB_URL" = "null" ]; then \
+        echo "ERROR: Could not parse download URL from metadata. Metadata contents:"; \
+        echo "$METADATA" | jq '.' || echo "$METADATA"; \
+        exit 1; \
+    fi && \
+    echo "Downloading Kiro IDE from: $KIRO_DEB_URL" && \
+    curl -fsSL "$KIRO_DEB_URL" -o /tmp/kiro-ide.deb && \
+    echo "Installing Kiro IDE..." && \
+    apt-get update && \
+    apt-get install -y /tmp/kiro-ide.deb && \
+    rm /tmp/kiro-ide.deb && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create Kiro IDE wrapper script for container compatibility
+RUN cat > /usr/local/bin/kiro-ide-safe << 'EOF'
+#!/bin/bash
+# Kiro IDE launcher with container-safe flags
+# Disables sandboxing which is incompatible with Docker containers
+
+export DISPLAY=${DISPLAY:-:1}
+
+# Find Kiro IDE binary
+if [ -f "/opt/Kiro/kiro" ]; then
+    KIRO_IDE_PATH="/opt/Kiro/kiro"
+elif [ -f "/usr/bin/kiro" ]; then
+    KIRO_IDE_PATH="/usr/bin/kiro"
+else
+    echo "Error: Kiro IDE not found"
+    exit 1
+fi
+
+exec "$KIRO_IDE_PATH" \
+    --no-sandbox \
+    --disable-namespace-sandbox \
+    --disable-setuid-sandbox \
+    --disable-dev-shm-usage \
+    --disable-gpu \
+    "$@"
+EOF
+
+RUN chmod +x /usr/local/bin/kiro-ide-safe
+
 # Install oh-my-zsh for ubuntu user
 RUN sudo -u ubuntu sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
 
