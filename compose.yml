@@ -42,7 +42,7 @@ services:
     working_dir: ${WORKDIR:-/workspace}
 
     # Command to run (can be overridden with COMPOSE_COMMAND env var)
-    command: ${COMPOSE_COMMAND:-/usr/local/bin/start-container.sh}
+    command: ${COMPOSE_COMMAND:-/bin/bash -c "while true; do sleep 3600; done"}
 
     # Keep container running
     tty: true

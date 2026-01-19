@@ -299,12 +299,15 @@ EOF
 
 chmod +x "$DEV_HOME/.local/bin/init-project"
 
-# Set proper ownership
+# Set proper ownership for newly created files only
 if id "$DEV_USER" &>/dev/null; then
-    chown -R "$DEV_USER:$DEV_USER" "$DEV_HOME" 2>/dev/null || true
-    chown -R "$DEV_USER:$DEV_USER" /workspace 2>/dev/null || true
-    chown -R "$DEV_USER:$DEV_USER" /opt/configs 2>/dev/null || true
-    echo "Ownership set for $DEV_USER user"
+    chown "$DEV_USER:$DEV_USER" "$DEV_HOME/.gitconfig" 2>/dev/null || true
+    chown "$DEV_USER:$DEV_USER" "$DEV_HOME/.config/agentic-env.sh" 2>/dev/null || true
+    chown "$DEV_USER:$DEV_USER" "$DEV_HOME/.vimrc" 2>/dev/null || true
+    chown "$DEV_USER:$DEV_USER" "$DEV_HOME/.tmux.conf" 2>/dev/null || true
+    chown "$DEV_USER:$DEV_USER" "$DEV_HOME/.local/bin/agentic-status" 2>/dev/null || true
+    chown "$DEV_USER:$DEV_USER" "$DEV_HOME/.local/bin/init-project" 2>/dev/null || true
+    echo "Ownership set for $DEV_USER user config files"
 else
     echo "User $DEV_USER not found, skipping ownership changes"
 fi
