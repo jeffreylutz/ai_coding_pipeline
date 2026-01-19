@@ -812,8 +812,6 @@ fi
 
 exec "$KIRO_PATH" \
     --no-sandbox \
-    --disable-namespace-sandbox \
-    --disable-setuid-sandbox \
     --disable-dev-shm-usage \
     "$@"
 EOF
@@ -855,32 +853,53 @@ RUN if [ -f "/opt/Kiro/kiro" ]; then \
     fi && \
     echo "Found Kiro IDE at: $KIRO_BIN" && \
     mv "$KIRO_BIN" "${KIRO_BIN}.bin" && \
-    cat > "$KIRO_BIN" << 'EOF'
-#!/bin/bash
-# Kiro IDE wrapper for container compatibility
-# Automatically adds flags to disable sandboxing
-
-# Set DISPLAY if not already set
-export DISPLAY=${DISPLAY:-:1}
-
-# Find the real Kiro binary
-SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-KIRO_REAL="${SCRIPT_DIR}/$(basename "$0").bin"
-
-if [ ! -f "$KIRO_REAL" ]; then
-    echo "Error: Kiro IDE binary not found at $KIRO_REAL"
-    exit 1
-fi
-
-# Launch with container-safe flags
-exec "$KIRO_REAL" \
-    --no-sandbox \
-    --disable-namespace-sandbox \
-    --disable-setuid-sandbox \
-    --disable-dev-shm-usage \
-    --disable-gpu \
-    "$@"
-EOF
+    printf '%s\n' '#!/bin/bash' \
+        '# Kiro IDE wrapper for container compatibility' \
+        '# Automatically adds flags to disable sandboxing and reads config from environment variables' \
+        '' \
+        '# Set DISPLAY if not already set' \
+        'export DISPLAY=${DISPLAY:-:1}' \
+        '' \
+        '# Find the real Kiro binary' \
+        'SCRIPT_DIR=$(dirname "$(readlink -f "$0")")' \
+        'KIRO_REAL="${SCRIPT_DIR}/$(basename "$0").bin"' \
+        '' \
+        'if [ ! -f "$KIRO_REAL" ]; then' \
+        '    echo "Error: Kiro IDE binary not found at $KIRO_REAL"' \
+        '    exit 1' \
+        'fi' \
+        '' \
+        '# Build arguments array with container-safe flags' \
+        'KIRO_ARGS=(' \
+        '    --no-sandbox' \
+        '    --disable-dev-shm-usage' \
+        '    --disable-gpu' \
+        ')' \
+        '' \
+        '# Add start URL if provided via environment variable' \
+        'if [ -n "$KIRO_START_URL" ]; then' \
+        '    echo "Using start URL from KIRO_START_URL: $KIRO_START_URL"' \
+        '    KIRO_ARGS+=(--url "$KIRO_START_URL")' \
+        'fi' \
+        '' \
+        '# Add AWS region if provided via environment variable' \
+        'if [ -n "$KIRO_AWS_REGION" ]; then' \
+        '    echo "Using AWS region from KIRO_AWS_REGION: $KIRO_AWS_REGION"' \
+        '    export AWS_REGION="$KIRO_AWS_REGION"' \
+        '    export AWS_DEFAULT_REGION="$KIRO_AWS_REGION"' \
+        '    KIRO_ARGS+=(--region "$KIRO_AWS_REGION")' \
+        'fi' \
+        '' \
+        '# Also support AWS_REGION if KIRO_AWS_REGION is not set' \
+        'if [ -z "$KIRO_AWS_REGION" ] && [ -n "$AWS_REGION" ]; then' \
+        '    echo "Using AWS region from AWS_REGION: $AWS_REGION"' \
+        '    export AWS_DEFAULT_REGION="$AWS_REGION"' \
+        '    KIRO_ARGS+=(--region "$AWS_REGION")' \
+        'fi' \
+        '' \
+        '# Launch with all flags and user arguments' \
+        'exec "$KIRO_REAL" "${KIRO_ARGS[@]}" "$@"' \
+        > "$KIRO_BIN" && \
     chmod +x "$KIRO_BIN"
 
 # Install oh-my-zsh for ubuntu user
