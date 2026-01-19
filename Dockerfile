@@ -154,6 +154,7 @@ gnome-terminal &
 # Start IceWM window manager (lightweight and container-friendly)
 exec icewm-session
 EOF
+RUN chmod +x /home/ubuntu/.vnc/xstartup && chown ubuntu:ubuntu /home/ubuntu/.vnc/xstartup
 
 # Create VNC configuration file
 RUN cat > /home/ubuntu/.vnc/config << 'EOF'

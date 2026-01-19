@@ -42,7 +42,7 @@ services:
     working_dir: ${WORKDIR:-/workspace}
 
     # Command to run (can be overridden with COMPOSE_COMMAND env var)
-    command: ${COMPOSE_COMMAND:-/bin/bash -c "while true; do sleep 3600; done"}
+    command: ${COMPOSE_COMMAND:-/usr/bin/supervisord -c /etc/supervisor/supervisord.conf}
 
     # Keep container running
     tty: true
