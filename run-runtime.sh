@@ -13,9 +13,9 @@ NC='\033[0m' # No Color
 export CONTAINER_NAME="agentic-runtime-container"
 export IMAGE_NAME="agentic-coding-runtime:latest"
 export BUILD_TARGET="runtime"
+export COMPOSE_FILE="compose.yml"
 export COMPOSE_COMMAND="/usr/bin/supervisord -c /etc/supervisor/supervisord.conf"
 export WORKDIR="/home/ubuntu"
-COMPOSE_FILE="compose.yml"
 
 # Ensure workspace directory exists
 WORKSPACE_DIR="$(pwd)/workspace"

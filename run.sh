@@ -13,6 +13,8 @@ NC='\033[0m' # No Color
 CONTAINER_NAME="agentic-coding-container"
 IMAGE_NAME="agentic-coding-pipeline:latest"
 COMPOSE_FILE="compose.yml"
+export COMPOSE_COMMAND="/usr/bin/supervisord -c /etc/supervisor/supervisord.conf"
+export WORKDIR="/home/ubuntu"
 
 echo -e "${BLUE}=== Agentic Coding Pipeline Container Manager ===${NC}"
 echo ""
